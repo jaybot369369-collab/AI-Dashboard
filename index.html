@@ -105,7 +105,7 @@
       <button class="modal-close" id="tradeModalClose">✕</button>
     </div>
     <div class="modal-body">
-      <form id="tradeForm" autocomplete="off">
+      <form id="tradeForm" autocomplete="off" onsubmit="event.preventDefault();return false;">
         <input type="hidden" id="tradeId" />
 
         <!-- Core -->
@@ -256,8 +256,11 @@
             <textarea id="fNotes" rows="3" placeholder="Any thoughts on this trade…"></textarea>
           </div>
           <div class="form-group">
-            <label>Screenshot URL</label>
-            <input type="url" id="fScreenshotUrl" placeholder="https://…" />
+            <label>Screenshot URL or Upload</label>
+            <input type="url" id="fScreenshotUrl" placeholder="https://… or upload below" />
+            <input type="file" id="fScreenshotFile" accept="image/*" style="margin-top:6px;font-size:.8rem"
+                   onchange="(function(e){var f=e.target.files[0];if(!f)return;if(f.size>2*1024*1024){App.toast('Image too large (max 2MB)','error');e.target.value='';return;}var r=new FileReader();r.onload=function(ev){document.getElementById('fScreenshotUrl').value=ev.target.result;App.toast('Image attached');};r.readAsDataURL(f);})(event)" />
+            <div id="fScreenshotPreview" style="margin-top:8px"></div>
           </div>
         </fieldset>
 

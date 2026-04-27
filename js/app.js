@@ -148,6 +148,19 @@ const App = (() => {
     $('fSetupCustomGroup').classList.add('hidden');
     $('fSetupCustom').value = '';
 
+    // Wire screenshot preview
+    const urlEl = $('fScreenshotUrl');
+    const prevEl = $('fScreenshotPreview');
+    const showPrev = () => {
+      if (!urlEl || !prevEl) return;
+      const v = urlEl.value.trim();
+      prevEl.innerHTML = v
+        ? `<img src="${v}" style="max-width:100%;max-height:140px;border-radius:6px;border:1px solid var(--border-sub)" onerror="this.style.display='none'" />`
+        : '';
+    };
+    if (urlEl && !urlEl._wired) { urlEl.addEventListener('input', showPrev); urlEl._wired = true; }
+    showPrev();
+
     // Default date to today
     $('fDate').value = new Date().toISOString().slice(0, 10);
 
@@ -308,7 +321,29 @@ const App = (() => {
   /* ══════════════════════════════════════════════════════
      INIT — wire up all events
   ══════════════════════════════════════════════════════ */
-  function init() {
+  /* ══════════════════════════════════════════════════════
+     FIRST-RUN SEED — auto-load historical trades if empty
+  ══════════════════════════════════════════════════════ */
+  async function autoSeedIfEmpty() {
+    try {
+      const existing = JSON.parse(localStorage.getItem('jb_trades') || '[]');
+      if (existing.length > 0) return; // already have trades; do nothing
+      const res = await fetch('assets/seed_trades.json');
+      if (!res.ok) return;
+      const trades = await res.json();
+      if (Array.isArray(trades) && trades.length) {
+        localStorage.setItem('jb_trades', JSON.stringify(trades));
+        console.log(`[JayBot] Auto-seeded ${trades.length} trades on first visit`);
+      }
+    } catch (e) {
+      console.warn('[JayBot] Auto-seed skipped:', e.message);
+    }
+  }
+
+  async function init() {
+    // First-run: load seed data if localStorage is empty
+    await autoSeedIfEmpty();
+
     // Apply saved settings
     const s = DB.getSettings();
     applyTheme(s.theme);

@@ -160,7 +160,9 @@ const TradeLogTab = (() => {
     ).join('');
 
     const notes = t.notes ? `<div class="expand-field" style="grid-column:1/-1"><span class="ef-label">Notes</span><span class="ef-val">${t.notes}</span></div>` : '';
-    const ss = t.screenshotUrl ? `<div class="expand-field" style="grid-column:1/-1"><span class="ef-label">Screenshot</span><span class="ef-val"><a href="${t.screenshotUrl}" target="_blank" rel="noopener">${t.screenshotUrl.slice(0, 60)}…</a></span></div>` : '';
+    const ss = t.screenshotUrl
+      ? `<div class="expand-field" style="grid-column:1/-1"><span class="ef-label">Screenshot</span><div class="ef-val"><img src="${t.screenshotUrl}" style="max-width:100%;max-height:300px;border-radius:6px;border:1px solid var(--border-sub);display:block;margin-top:6px;cursor:pointer" onclick="window.open(this.src,'_blank')" onerror="this.outerHTML='<a href=&quot;'+this.src+'&quot; target=_blank>Open image</a>'" /></div></div>`
+      : '';
 
     return fieldHtml + notes + ss;
   }
