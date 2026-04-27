@@ -174,15 +174,19 @@
                 <option value="Neutral">Neutral</option>
               </select>
             </div>
-            <div class="form-group">
-              <label>Setup Type</label>
-              <select id="fSetupType" onchange="document.getElementById('fSetupCustomGroup').classList.toggle('hidden', this.value !== '__custom__')">
-                <!-- populated from playbook catalogue -->
-              </select>
-            </div>
-            <div class="form-group hidden" id="fSetupCustomGroup">
-              <label>Custom Setup Name</label>
-              <input type="text" id="fSetupCustom" placeholder="e.g. Asian Range Breakout" />
+            <div class="form-group" style="flex:3">
+              <label>Setup Type(s) <span class="text-xs text-sub">— add multiple</span></label>
+              <div id="fSetupChips" class="setup-chips" style="margin-bottom:6px"></div>
+              <div style="display:flex;gap:6px;align-items:center">
+                <select id="fSetupPicker" style="flex:1">
+                  <!-- populated from playbook catalogue -->
+                </select>
+                <button type="button" class="btn-ghost btn-sm" id="fSetupAdd">＋ Add</button>
+              </div>
+              <div style="display:flex;gap:6px;align-items:center;margin-top:6px" id="fSetupCustomGroup" class="hidden">
+                <input type="text" id="fSetupCustom" placeholder="Custom setup name…" style="flex:1" />
+                <button type="button" class="btn-ghost btn-sm" id="fSetupCustomAdd">＋ Add</button>
+              </div>
             </div>
           </div>
         </fieldset>

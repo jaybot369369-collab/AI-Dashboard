@@ -164,13 +164,17 @@ const DB = (() => {
     return sorted.map(t => ({ date: t.date.slice(0, 10), equity: (eq += parseFloat(t.result || 0)) }));
   }
 
-  /* Win rate by setup type */
+  /* Win rate by setup type — handles both setupTypes[] and legacy setupType string */
   function winRateBySetup(trades) {
     const map = {};
-    trades.filter(t => t.setupType && t.result !== undefined && t.result !== '').forEach(t => {
-      if (!map[t.setupType]) map[t.setupType] = { wins: 0, total: 0 };
-      map[t.setupType].total++;
-      if (parseFloat(t.result) > 0) map[t.setupType].wins++;
+    trades.filter(t => t.result !== undefined && t.result !== '').forEach(t => {
+      const setups = t.setupTypes || (t.setupType ? [t.setupType] : []);
+      setups.forEach(k => {
+        if (!k) return;
+        if (!map[k]) map[k] = { wins: 0, total: 0 };
+        map[k].total++;
+        if (parseFloat(t.result) > 0) map[k].wins++;
+      });
     });
     return Object.entries(map).map(([label, v]) => ({
       label, winRate: v.total ? (v.wins / v.total) * 100 : 0, total: v.total
@@ -277,9 +281,11 @@ const DB = (() => {
     // 2. Worst setup type
     const bySetup = {};
     closed.forEach(t => {
-      const k = t.setupType || 'unspecified';
-      if (!bySetup[k]) bySetup[k] = [];
-      bySetup[k].push(t);
+      const setups = t.setupTypes || (t.setupType ? [t.setupType] : ['unspecified']);
+      setups.forEach(k => {
+        if (!bySetup[k]) bySetup[k] = [];
+        bySetup[k].push(t);
+      });
     });
     Object.entries(bySetup).forEach(([s, arr]) => {
       if (s === 'unspecified' || arr.length < 5) return;
@@ -704,7 +710,10 @@ const DB = (() => {
   function recomputePlaybookStats() {
     const trades = getTrades().filter(t => t.result !== undefined && t.result !== '');
     const pb = getPlaybook().map(setup => {
-      const matching = trades.filter(t => t.setupType === setup.name || t.setupType === setup.id);
+      const matching = trades.filter(t => {
+        const setups = t.setupTypes || (t.setupType ? [t.setupType] : []);
+        return setups.includes(setup.name) || setups.includes(setup.id);
+      });
       const wins = matching.filter(t => parseFloat(t.result) > 0);
       const avgR  = matching.length
         ? matching.reduce((s, t) => s + parseFloat(t.rMultiple || 0), 0) / matching.length
@@ -718,6 +727,15 @@ const DB = (() => {
     });
     savePlaybook(pb);
     return pb;
+  }
+
+  /* Screenshot array helper — handles new array field + legacy comma-string safely.
+     Never splits mid-base64 (only splits on comma followed by http: or data:). */
+  function getScreenshots(t) {
+    if (t.screenshotUrls && Array.isArray(t.screenshotUrls)) return t.screenshotUrls.filter(Boolean);
+    if (!t.screenshotUrl) return [];
+    // Legacy: split only where comma is immediately followed by http or data: — safe for base64
+    return t.screenshotUrl.split(/,(?=https?:|data:)/).map(s => s.trim()).filter(Boolean);
   }
 
   /* Setup names list for dropdowns */
@@ -1128,6 +1146,7 @@ const DB = (() => {
     autoParseCSV, mergeImportedTrades,
     parseNotionCSV, parseBinanceTxCSV, parseBinanceOrderCSV,
     // Utils
-    uid, parseMoney, normalisePair
+    uid, parseMoney, normalisePair,
+    getScreenshots
   };
 })();

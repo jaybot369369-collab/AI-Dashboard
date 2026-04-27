@@ -1346,6 +1346,37 @@ input.date-picker::-webkit-calendar-picker-indicator {
 }
 .thumb-remove:hover { background: var(--red); }
 
+/* Setup tag chips (multi-setup input) */
+.setup-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 20px;
+}
+.setup-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  border-radius: 20px;
+  padding: 2px 6px 2px 10px;
+  font-size: .75rem;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.chip-rm {
+  cursor: pointer;
+  opacity: .55;
+  font-size: .8rem;
+  line-height: 1;
+  background: none;
+  border: none;
+  color: inherit;
+  padding: 0;
+}
+.chip-rm:hover { opacity: 1; color: var(--red); }
+
 /* Day-trades modal */
 .day-trades-list { max-height: 50vh; overflow-y: auto; }
 .day-trade-row {

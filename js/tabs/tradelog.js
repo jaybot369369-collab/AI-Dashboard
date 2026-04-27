@@ -63,7 +63,7 @@ const TradeLogTab = (() => {
     let filtered = trades.filter(t => {
       if (filterSession && t.session !== filterSession) return false;
       if (filterDirection && t.direction !== filterDirection) return false;
-      if (filterSetup && t.setupType !== filterSetup) return false;
+      if (filterSetup && !(t.setupTypes || (t.setupType ? [t.setupType] : [])).includes(filterSetup)) return false;
       if (q && !`${t.symbol} ${t.notes} ${t.setupType}`.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -117,7 +117,7 @@ const TradeLogTab = (() => {
         <td>${t.date}</td>
         <td><strong>${t.symbol}</strong></td>
         <td>${dirBadge(t.direction)}</td>
-        <td><span class="badge badge-accent">${t.setupType || '—'}</span></td>
+        <td>${(t.setupTypes || (t.setupType ? [t.setupType] : [])).filter(Boolean).map(s => `<span class="badge badge-accent">${s}</span>`).join(' ') || '—'}</td>
         <td>${sessionBadge(t.session)}</td>
         <td class="mono-num">${t.entry ? parseFloat(t.entry).toLocaleString() : '—'}</td>
         <td class="${pl !== null ? (pl >= 0 ? 'text-green' : 'text-red') : ''} font-bold mono-num">${pl !== null ? fmt$(pl) : '—'}</td>
@@ -160,7 +160,7 @@ const TradeLogTab = (() => {
     ).join('');
 
     const notes = t.notes ? `<div class="expand-field" style="grid-column:1/-1"><span class="ef-label">Notes</span><span class="ef-val">${t.notes}</span></div>` : '';
-    const urls = t.screenshotUrl ? t.screenshotUrl.split(/,(?![^()]*\))/).map(s => s.trim()).filter(Boolean) : [];
+    const urls = DB.getScreenshots(t);
     const ss = urls.length
       ? `<div class="expand-field" style="grid-column:1/-1">
            <span class="ef-label">Screenshots (${urls.length})</span>
