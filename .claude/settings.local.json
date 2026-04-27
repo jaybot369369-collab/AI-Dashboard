@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c ' *)",
+      "Bash(pip3 install *)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(npx --version)",
+      "Bash(node --check \"/Users/claudebot-1/Documents/Claude/Q2_2026/_CLAUDE PROJECTS/_JayBot Dashboard/JayBot Dashboard/js/tabs/coach.js\")",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "mcp__Claude_in_Chrome__navigate",
+      "mcp__Claude_in_Chrome__computer",
+      "mcp__Claude_in_Chrome__javascript_tool",
+      "Bash(node --check js/app.js)",
+      "Bash(node --check js/data.js)",
+      "Bash(node --check js/charts.js)",
+      "Bash(npx serve *)",
+      "Bash(chmod +x /Users/claudebot-1/Desktop/JayBot.command)",
+      "Bash(gh auth *)",
+      "Bash(git --version)",
+      "Bash(git config *)",
+      "Bash(git commit -m 'Initial JayBot Dashboard *)"
+    ]
+  }
+}

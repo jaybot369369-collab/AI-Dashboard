@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JayBot Dashboard</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════
+     SIDEBAR
+════════════════════════════════════════════════ -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <div class="logo">
+      <span class="logo-icon">⚡</span>
+      <span class="logo-text">JayBot</span>
+    </div>
+    <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">&#8249;</button>
+  </div>
+
+  <nav class="sidebar-nav" id="sidebarNav">
+    <!-- tabs rendered by app.js -->
+  </nav>
+
+  <div class="sidebar-footer">
+    <button class="btn-ghost sidebar-add-tab" id="addTabBtn" title="Add a new tab">
+      <span class="icon">＋</span>
+      <span class="nav-label">Add Tab</span>
+    </button>
+    <div class="sidebar-trade-btn">
+      <button class="btn-primary sidebar-new-trade" id="sidebarNewTrade">
+        <span class="icon">＋</span>
+        <span class="nav-label">New Trade</span>
+      </button>
+    </div>
+  </div>
+</aside>
+
+<!-- ═══════════════════════════════════════════════
+     MAIN LAYOUT
+════════════════════════════════════════════════ -->
+<div class="main-wrapper">
+
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="hamburger" id="hamburger" title="Menu">☰</button>
+      <h1 class="page-title" id="pageTitle">Dashboard</h1>
+    </div>
+    <div class="topbar-right">
+      <!-- Data source toggle -->
+      <div class="date-filter" id="dataModeFilter" title="Filter trades by source">
+        <button class="date-btn" data-mode="imported" title="Historical: Notion + Binance imports">Past</button>
+        <button class="date-btn" data-mode="new" title="Manual trades logged from now on">New</button>
+        <button class="date-btn active" data-mode="all" title="Past + New combined">Both</button>
+      </div>
+      <!-- Date range filter -->
+      <div class="date-filter" id="dateFilter">
+        <button class="date-btn active" data-range="30">30d</button>
+        <button class="date-btn" data-range="60">60d</button>
+        <button class="date-btn" data-range="90">90d</button>
+        <button class="date-btn" data-range="custom">Custom</button>
+        <div class="custom-dates hidden" id="customDates">
+          <input type="date" id="dateFrom" />
+          <span>→</span>
+          <input type="date" id="dateTo" />
+        </div>
+      </div>
+      <!-- Actions -->
+      <div class="topbar-actions">
+        <button class="btn-ghost" id="exportBtn" title="Export JSON">↑ Export</button>
+        <button class="btn-ghost" id="importBtn" title="Import JSON">↓ Import</button>
+        <input type="file" id="importFile" accept=".json" class="hidden" />
+        <button class="theme-toggle" id="privacyToggle" title="Hide all balances">👁</button>
+        <button class="theme-toggle" id="themeToggle" title="Toggle theme">🌙</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- CONTENT AREA -->
+  <main class="content" id="content">
+    <!-- Tab content rendered here by JS -->
+    <div class="loading-state">Loading…</div>
+  </main>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     FLOATING ACTION BUTTON
+════════════════════════════════════════════════ -->
+<button class="fab" id="fab" title="Add new trade">＋</button>
+
+<!-- ═══════════════════════════════════════════════
+     MODALS
+════════════════════════════════════════════════ -->
+
+<!-- Trade Form Modal -->
+<div class="modal-overlay hidden" id="tradeModal">
+  <div class="modal" id="tradeModalBox">
+    <div class="modal-header">
+      <h2 id="tradeModalTitle">New Trade</h2>
+      <button class="modal-close" id="tradeModalClose">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="tradeForm" autocomplete="off">
+        <input type="hidden" id="tradeId" />
+
+        <!-- Core -->
+        <fieldset>
+          <legend>Core</legend>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Symbol</label>
+              <select id="fSymbol">
+                <option value="BTC/USDT">BTC/USDT</option>
+                <option value="ETH/USDT">ETH/USDT</option>
+                <option value="XRP/USDT">XRP/USDT</option>
+                <option value="custom">Other…</option>
+              </select>
+            </div>
+            <div class="form-group hidden" id="fSymbolCustomGroup">
+              <label>Custom Symbol</label>
+              <input type="text" id="fSymbolCustom" placeholder="e.g. SOL/USDT" />
+            </div>
+            <div class="form-group">
+              <label>Direction</label>
+              <select id="fDirection">
+                <option value="Long">Long</option>
+                <option value="Short">Short</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Entry Price</label>
+              <input type="number" id="fEntry" step="any" placeholder="0.00" required />
+            </div>
+            <div class="form-group">
+              <label>Stop Loss</label>
+              <input type="number" id="fSl" step="any" placeholder="0.00" required />
+            </div>
+            <div class="form-group">
+              <label>Take Profit</label>
+              <input type="number" id="fTp" step="any" placeholder="0.00" />
+            </div>
+            <div class="form-group">
+              <label>Position Size ($)</label>
+              <input type="number" id="fSize" step="any" placeholder="0.00" />
+            </div>
+          </div>
+        </fieldset>
+
+        <!-- Trade Setup Name -->
+        <fieldset>
+          <legend>Trade Setup Name</legend>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Session / Killzone</label>
+              <select id="fSession">
+                <option value="London">London Open</option>
+                <option value="NY">NY Open</option>
+                <option value="Asian">Asian</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>HTF Bias</label>
+              <select id="fHtfBias">
+                <option value="Bullish">Bullish</option>
+                <option value="Bearish">Bearish</option>
+                <option value="Neutral">Neutral</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Setup Type</label>
+              <select id="fSetupType" onchange="document.getElementById('fSetupCustomGroup').classList.toggle('hidden', this.value !== '__custom__')">
+                <!-- populated from playbook catalogue -->
+              </select>
+            </div>
+            <div class="form-group hidden" id="fSetupCustomGroup">
+              <label>Custom Setup Name</label>
+              <input type="text" id="fSetupCustom" placeholder="e.g. Asian Range Breakout" />
+            </div>
+          </div>
+        </fieldset>
+
+        <!-- Pre-Trade Grade -->
+        <fieldset>
+          <legend>Pre-Trade Grade (Plan Quality)</legend>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Grade</label>
+              <select id="fPreGrade">
+                <option value="">— not graded —</option>
+                <option value="A">A — Textbook setup</option>
+                <option value="B">B — Good setup</option>
+                <option value="C">C — Marginal setup</option>
+                <option value="D">D — Forced trade</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex:2">
+              <label>Rationale</label>
+              <input type="text" id="fPreGradeNotes" placeholder="Why this grade?" />
+            </div>
+          </div>
+        </fieldset>
+
+        <!-- Outcome -->
+        <fieldset>
+          <legend>Outcome (fill after close)</legend>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Exit Price</label>
+              <input type="number" id="fExitPrice" step="any" placeholder="0.00" />
+            </div>
+            <div class="form-group">
+              <label>Result ($)</label>
+              <input type="number" id="fResult" step="any" placeholder="0.00" />
+            </div>
+            <div class="form-group">
+              <label>R Multiple</label>
+              <input type="number" id="fRMultiple" step="any" placeholder="e.g. 1.5" />
+            </div>
+          </div>
+        </fieldset>
+
+        <!-- Post-Trade Grade -->
+        <fieldset>
+          <legend>Post-Trade Grade (Execution Quality)</legend>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Grade</label>
+              <select id="fPostGrade">
+                <option value="">— not graded —</option>
+                <option value="A">A — Perfect execution</option>
+                <option value="B">B — Good execution</option>
+                <option value="C">C — Sloppy</option>
+                <option value="D">D — Rule break</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex:2">
+              <label>Notes</label>
+              <input type="text" id="fPostGradeNotes" placeholder="What happened?" />
+            </div>
+          </div>
+        </fieldset>
+
+        <!-- Notes & Screenshot -->
+        <fieldset>
+          <legend>Notes &amp; Screenshot</legend>
+          <div class="form-group">
+            <label>Notes</label>
+            <textarea id="fNotes" rows="3" placeholder="Any thoughts on this trade…"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Screenshot URL</label>
+            <input type="url" id="fScreenshotUrl" placeholder="https://…" />
+          </div>
+        </fieldset>
+
+        <!-- Date override -->
+        <fieldset>
+          <legend>Date &amp; Time</legend>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Trade Date</label>
+              <input type="date" id="fDate" required />
+            </div>
+            <div class="form-group">
+              <label>Time (optional)</label>
+              <input type="time" id="fTime" />
+            </div>
+          </div>
+        </fieldset>
+
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" id="tradeFormCancel">Cancel</button>
+      <button class="btn-primary" id="tradeFormSave">Save Trade</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Tab Modal -->
+<div class="modal-overlay hidden" id="addTabModal">
+  <div class="modal modal-sm" id="addTabModalBox">
+    <div class="modal-header">
+      <h2>Add Tab</h2>
+      <button class="modal-close" id="addTabClose">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Tab Name</label>
+        <input type="text" id="newTabName" placeholder="e.g. Statistics" />
+      </div>
+      <div class="form-group">
+        <label>Icon (emoji)</label>
+        <input type="text" id="newTabIcon" placeholder="e.g. 📊" maxlength="2" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" id="addTabCancel">Cancel</button>
+      <button class="btn-primary" id="addTabConfirm">Add Tab</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Delete Modal -->
+<div class="modal-overlay hidden" id="confirmModal">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2>Confirm Delete</h2>
+      <button class="modal-close" id="confirmClose">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="confirmMessage">Are you sure?</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" id="confirmCancel">Cancel</button>
+      <button class="btn-danger" id="confirmOk">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast notification -->
+<div class="toast hidden" id="toast"></div>
+
+<!-- ═══════════════════════════════════════════════
+     SCRIPTS
+════════════════════════════════════════════════ -->
+<script src="js/data.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/tabs/dashboard.js"></script>
+<script src="js/tabs/tradelog.js"></script>
+<script src="js/tabs/journal.js"></script>
+<script src="js/tabs/analytics.js"></script>
+<script src="js/tabs/watchlist.js"></script>
+<script src="js/tabs/playbook.js"></script>
+<script src="js/tabs/mistakes.js"></script>
+<script src="js/tabs/strengths.js"></script>
+<script src="js/tabs/goals.js"></script>
+<script src="js/tabs/reports.js"></script>
+<script src="js/tabs/coach.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

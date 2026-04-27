@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Importing data…</title>
+<style>
+  body { background:#0d1117; color:#e8edf5; font-family:system-ui; display:flex;
+         align-items:center; justify-content:center; height:100vh; margin:0; flex-direction:column; gap:16px; }
+  .bar-wrap { background:#1a2035; border-radius:8px; width:300px; height:12px; }
+  .bar { background:#4f8ef7; border-radius:8px; height:100%; width:0%; transition:width 0.3s; }
+  p { color:#7b8db3; font-size:.9rem; }
+</style>
+</head>
+<body>
+<div style="font-size:1.2rem;font-weight:700">⚡ JayBot — Importing trade history…</div>
+<div class="bar-wrap"><div class="bar" id="bar"></div></div>
+<p id="status">Loading data…</p>
+<script>
+(async function() {
+  const status = document.getElementById('status');
+  const bar    = document.getElementById('bar');
+
+  try {
+    status.textContent = 'Fetching trade data…';
+    const res = await fetch('assets/seed_trades.json');
+    if (!res.ok) throw new Error('Failed to fetch seed data: ' + res.status);
+    bar.style.width = '30%';
+
+    status.textContent = 'Parsing…';
+    const trades = await res.json();
+    bar.style.width = '60%';
+
+    // Deduplicate against any existing trades
+    let existing = [];
+    try { existing = JSON.parse(localStorage.getItem('jb_trades') || '[]'); } catch {}
+    const existingKeys = new Set(existing.map(t => t.source + '|' + t.date + '|' + t.symbol + '|' + t.direction + '|' + t.entry));
+    const toAdd = trades.filter(t => !existingKeys.has(t.source + '|' + t.date + '|' + t.symbol + '|' + t.direction + '|' + t.entry));
+
+    status.textContent = `Adding ${toAdd.length} trades (${trades.length - toAdd.length} duplicates skipped)…`;
+    localStorage.setItem('jb_trades', JSON.stringify([...existing, ...toAdd]));
+    bar.style.width = '90%';
+
+    status.textContent = `✅ ${toAdd.length} trades imported! Redirecting…`;
+    bar.style.width = '100%';
+    bar.style.background = '#00c896';
+
+    setTimeout(() => { window.location.href = 'index.html'; }, 1200);
+  } catch(err) {
+    status.textContent = '❌ Error: ' + err.message;
+    bar.style.background = '#ff4d6a';
+  }
+})();
+</script>
+</body>
+</html>
