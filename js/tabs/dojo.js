@@ -1,23 +1,29 @@
 /* ═══════════════════════════════════════════════════════════
-   ICT DOJO TAB — Live Binance market conditions
-   Pairs: BTCUSDT / XRPUSDT  |  TFs: 4H · 1H · 15m
+   ICT DOJO TAB — Live Binance market conditions  (v2)
+   Pairs: user-managed list (persisted)  |  TFs: 4H · 1H · 15m · 1D
    Poll: every 60s via Binance public REST API
 ════════════════════════════════════════════════════════════ */
 const DojoTab = (() => {
 
+  /* ── Constants ──────────────────────────────────────── */
+  const PROTECTED = ['BTCUSDT', 'ETHUSDT', 'XRPUSDT'];
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
   /* ── State ──────────────────────────────────────────── */
-  let _pair      = 'BTCUSDT';
-  let _candles   = {};   // { '4h': [...], '1h': [...], '15m': [...] }
-  let _ticker    = null;
-  let _signals   = null;
-  let _pollTimer = null;
-  let _clockTimer= null;
-  let _lastFetch = null;
-  let _fetchErr  = null;
+  let _pair        = 'BTCUSDT';
+  let _customPairs = JSON.parse(localStorage.getItem('jb_dojo_pairs') || 'null') || [...PROTECTED];
+  let _candles     = {};
+  let _ticker      = null;
+  let _signals     = null;
+  let _pollTimer   = null;
+  let _clockTimer  = null;
+  let _lastFetch   = null;
+  let _fetchErr    = null;
+
+  function savePairs() { localStorage.setItem('jb_dojo_pairs', JSON.stringify(_customPairs)); }
 
   /* ── Utils ──────────────────────────────────────────── */
-  const pairLabel = s => s.replace('USDT', '/USDT');
-  const dp = s => s.includes('BTC') ? 2 : 4;
+  const dp = s => s && s.includes('BTC') ? 2 : 4;
   const fmtP = (n, sym) => n == null ? '—' : '$' + parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: dp(sym||_pair), maximumFractionDigits: dp(sym||_pair) });
   const ago  = ms => { const s = Math.round((Date.now()-ms)/1000); return s < 60 ? `${s}s ago` : `${Math.round(s/60)}m ago`; };
 
@@ -60,6 +66,35 @@ const DojoTab = (() => {
   const fmtCD = m => m <= 0 ? 'NOW' : m < 60 ? `${Math.floor(m)}m` : `${Math.floor(m/60)}h ${Math.floor(m%60)}m`;
 
   /* ══════════════════════════════════════════════════════
+     FORMATION SIGNAL METADATA
+  ══════════════════════════════════════════════════════ */
+  const SIG_META = {
+    'Bearish RSI Div': { bestTF: ['15m','1h'], bestDays: ['Tue','Wed','Thu'], holdTime: '1-4 bars (~30m-4h)',
+      why: 'NY-AM displacement creates breaker + fresh FVG on same leg; Tue/Wed carry week\'s widest range' },
+    'Bullish RSI Div': { bestTF: ['15m','1h'], bestDays: ['Tue','Wed','Thu'], holdTime: '1-4 bars (~30m-4h)',
+      why: 'Asia/London sweep into NY FVG; weekends thin, Mon gap-risky' },
+    'Wick Rejection':  { bestTF: ['1h','4h'],  bestDays: ['Tue','Wed','Thu'], holdTime: '2-6 bars (~4h-1d)',
+      why: 'HTF OB tap after London sweep; midweek liquidity pool largest' },
+    'Liq Sweep':       { bestTF: ['15m','1h'], bestDays: ['Tue','Wed','Thu'], holdTime: '30-90 min',
+      why: '10-11 ET window fills prior NY-AM FVG; drops sharply Mon/Fri' },
+    'Engulfing':       { bestTF: ['1h','4h'],  bestDays: ['Wed','Thu'],       holdTime: '4-12 bars (~8h-2d)',
+      why: 'Late-week continuation after structure shift; Friday often fades' },
+    'Vol Divergence':  { bestTF: ['4h','1d'],  bestDays: ['Wed','Thu'],       holdTime: '4-12 bars (~16h-3d)',
+      why: 'Stacked stops drawn down by Wed midpoint; weekly flushes cluster' },
+  };
+
+  function tierFor(sig, formations) {
+    const today = DAYS[new Date().getUTCDay()];
+    const meta = SIG_META[sig.type];
+    if (!meta) return 'B';
+    const inDay = meta.bestDays.includes(today);
+    const inKZ  = kzStatus().some(k => k.active);
+    const sameType = formations.filter(f => f.type === sig.type).length;
+    if ((inKZ && inDay) || sameType >= 2) return 'A';
+    return 'B';
+  }
+
+  /* ══════════════════════════════════════════════════════
      BINANCE FETCH
   ══════════════════════════════════════════════════════ */
   async function fetchCandles(sym, interval, limit = 120) {
@@ -77,13 +112,14 @@ const DojoTab = (() => {
     _fetchErr = null;
     updateStatus('Fetching…');
     try {
-      const [c4h, c1h, c15m, tick] = await Promise.all([
+      const [c4h, c1h, c15m, c1d, tick] = await Promise.all([
         fetchCandles(_pair, '4h', 100),
         fetchCandles(_pair, '1h', 100),
         fetchCandles(_pair, '15m', 100),
+        fetchCandles(_pair, '1d', 90),
         fetchTicker(_pair),
       ]);
-      _candles = { '4h': c4h, '1h': c1h, '15m': c15m };
+      _candles = { '4h': c4h, '1h': c1h, '15m': c15m, '1d': c1d };
       _ticker  = tick;
       _lastFetch = Date.now();
       _signals = runAnalysis();
@@ -94,7 +130,7 @@ const DojoTab = (() => {
   }
 
   /* ══════════════════════════════════════════════════════
-     ICT ANALYSIS ENGINE
+     ICT ANALYSIS — base helpers
   ══════════════════════════════════════════════════════ */
   function calcRSI(closes, p = 14) {
     if (closes.length < p + 1) return closes.map(() => 50);
@@ -112,33 +148,32 @@ const DojoTab = (() => {
     return rsi;
   }
 
-  function swingHighs(candles, lb = 2) {
+  function swingHighs(c, lb = 2) {
     const out = [];
-    for (let i = lb; i < candles.length - lb; i++) {
+    for (let i = lb; i < c.length - lb; i++) {
       let ok = true;
-      for (let j = 1; j <= lb; j++) if (candles[i].h <= candles[i-j].h || candles[i].h <= candles[i+j].h) { ok = false; break; }
-      if (ok) out.push({ idx: i, price: candles[i].h, t: candles[i].t });
+      for (let j = 1; j <= lb; j++) if (c[i].h <= c[i-j].h || c[i].h <= c[i+j].h) { ok = false; break; }
+      if (ok) out.push({ idx: i, price: c[i].h, t: c[i].t });
     }
     return out;
   }
-  function swingLows(candles, lb = 2) {
+  function swingLows(c, lb = 2) {
     const out = [];
-    for (let i = lb; i < candles.length - lb; i++) {
+    for (let i = lb; i < c.length - lb; i++) {
       let ok = true;
-      for (let j = 1; j <= lb; j++) if (candles[i].l >= candles[i-j].l || candles[i].l >= candles[i+j].l) { ok = false; break; }
-      if (ok) out.push({ idx: i, price: candles[i].l, t: candles[i].t });
+      for (let j = 1; j <= lb; j++) if (c[i].l >= c[i-j].l || c[i].l >= c[i+j].l) { ok = false; break; }
+      if (ok) out.push({ idx: i, price: c[i].l, t: c[i].t });
     }
     return out;
   }
 
+  /* ── PD Array detectors (unchanged) ──────────────────── */
   function findFVGs(candles) {
     const res = [], cur = candles.at(-1).c;
     for (let i = 2; i < candles.length; i++) {
       const [c1,,c3] = [candles[i-2], candles[i-1], candles[i]];
-      if (c3.l > c1.h && cur > c1.h * 0.97)
-        res.push({ type:'FVG', dir:'bull', top:c3.l, bot:c1.h, label:'FVG ↑', tf:'' });
-      if (c3.h < c1.l && cur < c1.l * 1.03)
-        res.push({ type:'FVG', dir:'bear', top:c1.l, bot:c3.h, label:'FVG ↓', tf:'' });
+      if (c3.l > c1.h && cur > c1.h * 0.97)  res.push({ type:'FVG', dir:'bull', top:c3.l, bot:c1.h, label:'FVG ↑', tf:'' });
+      if (c3.h < c1.l && cur < c1.l * 1.03)  res.push({ type:'FVG', dir:'bear', top:c1.l, bot:c3.h, label:'FVG ↓', tf:'' });
     }
     return res.slice(-6);
   }
@@ -241,6 +276,17 @@ const DojoTab = (() => {
     return { bulls, bears, total, near, dino: total >= 5 };
   }
 
+  function pdDirection(conf) {
+    const { bulls, bears } = conf;
+    const tot = bulls + bears;
+    if (tot < 3) return { label: 'UNSURE', icon: '❓', color: 'var(--text-sub)', desc: 'Not enough PD arrays nearby — hold off' };
+    const ratio = bulls / tot;
+    if (ratio >= 0.65) return { label: 'BULL DOMINANT', icon: '▲', color: 'var(--green)', desc: 'Bullish bias — look for longs in discount' };
+    if (ratio <= 0.35) return { label: 'BEAR DOMINANT', icon: '▼', color: 'var(--red)',   desc: 'Bearish bias — look for shorts in premium' };
+    return                 { label: 'NEUTRAL',        icon: '◆', color: 'var(--gold)',  desc: 'Forces balanced — wait for a sweep to commit' };
+  }
+
+  /* ── Existing condition detectors ────────────────────── */
   function detectPremDisc(candles) {
     const s = candles.slice(-50);
     const hi = Math.max(...s.map(c=>c.h)), lo = Math.min(...s.map(c=>c.l));
@@ -314,14 +360,14 @@ const DojoTab = (() => {
       const [h1,h2] = [sH.at(-2), sH.at(-1)];
       const [r1,r2] = [rsi[h1.idx], rsi[h2.idx]];
       if (r1!=null && r2!=null && h2.price > h1.price && r2 < r1 - 3)
-        out.push({ type:'Bearish RSI Div', color:'var(--red)',
+        out.push({ type:'Bearish RSI Div', color:'var(--red)', tf,
           desc:`${tf}: Price HH but RSI lower high (${r2.toFixed(0)} < ${r1.toFixed(0)})` });
     }
     if (sL.length >= 2) {
       const [l1,l2] = [sL.at(-2), sL.at(-1)];
       const [r1,r2] = [rsi[l1.idx], rsi[l2.idx]];
       if (r1!=null && r2!=null && l2.price < l1.price && r2 > r1 + 3)
-        out.push({ type:'Bullish RSI Div', color:'var(--green)',
+        out.push({ type:'Bullish RSI Div', color:'var(--green)', tf,
           desc:`${tf}: Price LL but RSI higher low (${r2.toFixed(0)} > ${r1.toFixed(0)})` });
     }
     return out;
@@ -330,47 +376,169 @@ const DojoTab = (() => {
   function detectFormations() {
     const c4 = _candles['4h']||[], c1 = _candles['1h']||[], c15 = _candles['15m']||[];
     const sigs = [];
-    // RSI divergence across all 3 TFs
     [['4H',c4],['1H',c1],['15m',c15]].forEach(([tf,cc]) => { if(cc.length>20) sigs.push(...detectRSIDiv(cc,tf)); });
-    // Wick rejection at HTF EQ level
     const eq4 = findEQ(c4.slice(-60));
-    [c4.at(-1), c1.at(-1)].filter(Boolean).forEach(c => {
+    [c4.at(-1), c1.at(-1)].filter(Boolean).forEach((c, i) => {
+      const tf = i === 0 ? '4H' : '1H';
       const rng = c.h - c.l; if (!rng) return;
       const uw = c.h - Math.max(c.o,c.c), lw = Math.min(c.o,c.c) - c.l;
       if (uw/rng > 0.55 && eq4.some(l => Math.abs(c.h-l.top)/c.h < 0.004))
-        sigs.push({ type:'Wick Rejection', color:'var(--red)', desc:'Bearish wick rejection at HTF EQ level' });
+        sigs.push({ type:'Wick Rejection', color:'var(--red)', tf, desc:`Bearish wick rejection at HTF EQ level (${tf})` });
       if (lw/rng > 0.55 && eq4.some(l => Math.abs(c.l-l.bot)/c.l < 0.004))
-        sigs.push({ type:'Wick Rejection', color:'var(--green)', desc:'Bullish wick rejection at HTF EQ level' });
+        sigs.push({ type:'Wick Rejection', color:'var(--green)', tf, desc:`Bullish wick rejection at HTF EQ level (${tf})` });
     });
-    // Liquidity sweep reversal
-    detectLiqSweep(c1.length ? c1 : c4).forEach(s => sigs.push({ type:'Liq Sweep', color:s.color, desc:s.label }));
-    // Engulfing at 4H OB
+    detectLiqSweep(c1.length ? c1 : c4).forEach(s => sigs.push({ type:'Liq Sweep', color:s.color, tf:'1H', desc:s.label }));
     if (c4.length >= 2) {
       const [prev,last] = [c4.at(-2), c4.at(-1)];
       const bullE = last.c > prev.o && last.o < prev.c && last.c > last.o;
       const bearE = last.c < prev.o && last.o > prev.c && last.c < last.o;
       findOBs(c4.slice(-60)).forEach(ob => {
         const atOB = last.c >= ob.bot*0.998 && last.c <= ob.top*1.002;
-        if (bullE && ob.dir==='bull' && atOB) sigs.push({ type:'Engulfing', color:'var(--green)', desc:'Bullish engulfing at 4H OB' });
-        if (bearE && ob.dir==='bear' && atOB) sigs.push({ type:'Engulfing', color:'var(--red)',   desc:'Bearish engulfing at 4H OB' });
+        if (bullE && ob.dir==='bull' && atOB) sigs.push({ type:'Engulfing', color:'var(--green)', tf:'4H', desc:'Bullish engulfing at 4H OB' });
+        if (bearE && ob.dir==='bear' && atOB) sigs.push({ type:'Engulfing', color:'var(--red)',   tf:'4H', desc:'Bearish engulfing at 4H OB' });
       });
     }
-    // Volume divergence (last 3 candle bodies shrinking at extreme)
-    if (c4.length >= 4) {
+    if (c4.length >= 6) {
       const last3 = c4.slice(-3), prev3 = c4.slice(-6,-3);
       const avgBodyNow  = last3.reduce((a,c) => a + Math.abs(c.c-c.o),0)/3;
       const avgBodyPrev = prev3.reduce((a,c) => a + Math.abs(c.c-c.o),0)/3;
       const pd = detectPremDisc(c4);
       if (avgBodyNow < avgBodyPrev * 0.55) {
-        if (pd.pct > 65) sigs.push({ type:'Vol Divergence', color:'var(--red)',   desc:'Shrinking candle bodies in premium — momentum fading' });
-        if (pd.pct < 35) sigs.push({ type:'Vol Divergence', color:'var(--green)', desc:'Shrinking candle bodies in discount — momentum fading' });
+        if (pd.pct > 65) sigs.push({ type:'Vol Divergence', color:'var(--red)',   tf:'4H', desc:'Shrinking candle bodies in premium — momentum fading' });
+        if (pd.pct < 35) sigs.push({ type:'Vol Divergence', color:'var(--green)', tf:'4H', desc:'Shrinking candle bodies in discount — momentum fading' });
       }
     }
-    return sigs.slice(0,7);
+    return sigs.slice(0,8);
   }
 
+  /* ══════════════════════════════════════════════════════
+     NEW: EXTENDED CONDITION DETECTORS
+  ══════════════════════════════════════════════════════ */
+
+  /* 1. Volatility regime via ATR(14) ratio */
+  function detectVolatility(c4) {
+    if (c4.length < 30) return { label: 'Loading…', color: 'var(--text-sub)', desc: '' };
+    const tr = [];
+    for (let i = 1; i < c4.length; i++) {
+      tr.push(Math.max(c4[i].h - c4[i].l, Math.abs(c4[i].h - c4[i-1].c), Math.abs(c4[i].l - c4[i-1].c)));
+    }
+    const atr14 = tr.slice(-14).reduce((a,b)=>a+b,0) / 14;
+    const atr50 = tr.slice(-50).reduce((a,b)=>a+b,0) / Math.min(50, tr.length);
+    const ratio = atr14 / atr50;
+    if (ratio < 0.6)      return { label:'Low Vol',   color:'var(--text-sub)', desc:'Compression — breakout watch', ratio };
+    if (ratio < 0.9)      return { label:'Below Avg', color:'var(--accent)',   desc:'Quiet — wait for expansion',   ratio };
+    if (ratio < 1.3)      return { label:'Normal',    color:'var(--green)',    desc:'Healthy ATR — typical range',  ratio };
+    if (ratio < 1.7)      return { label:'High Vol',  color:'var(--orange)',   desc:'Expanded range — size down',   ratio };
+    return                       { label:'EXTREME',   color:'var(--red)',      desc:'Stay flat or scalp only',      ratio };
+  }
+
+  /* 2. Today's daily range completion vs 20-day avg */
+  function detectDailyRange(c1h, c1d) {
+    if (!c1d || c1d.length < 21 || !c1h.length) return { label:'Loading…', color:'var(--text-sub)', desc:'' };
+    const now = new Date();
+    const todayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const todayBars = c1h.filter(c => c.t >= todayStart);
+    if (!todayBars.length) return { label:'No data yet', color:'var(--text-sub)', desc:'' };
+    const todayHi  = Math.max(...todayBars.map(c=>c.h));
+    const todayLo  = Math.min(...todayBars.map(c=>c.l));
+    const todayRng = todayHi - todayLo;
+    const avgDaily = c1d.slice(-21,-1).reduce((s,c)=>s+(c.h-c.l),0) / 20;
+    const pct = (todayRng / avgDaily) * 100;
+    if (pct < 50) return { label:`${pct.toFixed(0)}% used`, color:'var(--green)', desc:'Plenty of room left in day', pct };
+    if (pct < 90) return { label:`${pct.toFixed(0)}% used`, color:'var(--gold)',  desc:'Most of avg range done',     pct };
+    return              { label:`${pct.toFixed(0)}% used`, color:'var(--red)',   desc:'Range exhausted — fade extremes', pct };
+  }
+
+  /* 3. Previous Day High / Low + distance */
+  function detectPDHPDL(c1h) {
+    if (c1h.length < 30) return null;
+    const now = new Date();
+    const todayStart     = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const yesterdayStart = todayStart - 86400000;
+    const ydayBars = c1h.filter(c => c.t >= yesterdayStart && c.t < todayStart);
+    if (!ydayBars.length) return null;
+    const pdh = Math.max(...ydayBars.map(c=>c.h));
+    const pdl = Math.min(...ydayBars.map(c=>c.l));
+    const cur = c1h.at(-1).c;
+    const distH = ((pdh - cur) / cur * 100);
+    const distL = ((cur - pdl) / cur * 100);
+    let status, color;
+    if (cur > pdh)         { status = 'Above PDH (swept high)';  color = 'var(--green)'; }
+    else if (cur < pdl)    { status = 'Below PDL (swept low)';   color = 'var(--red)'; }
+    else if (distH < 0.5)  { status = 'Approaching PDH';         color = 'var(--orange)'; }
+    else if (distL < 0.5)  { status = 'Approaching PDL';         color = 'var(--orange)'; }
+    else                   { status = 'Inside yesterday range';  color = 'var(--text-sub)'; }
+    return { pdh, pdl, status, color, distH, distL };
+  }
+
+  /* 4. Weekly open bias */
+  function detectWeeklyOpen(c4) {
+    if (c4.length < 10) return null;
+    const now = new Date();
+    const dow = now.getUTCDay();
+    const offsetDays = dow === 0 ? 6 : dow - 1;
+    const monday = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - offsetDays);
+    const weekBars = c4.filter(c => c.t >= monday);
+    if (!weekBars.length) return null;
+    const wkOpen = weekBars[0].o;
+    const cur = c4.at(-1).c;
+    const pct = ((cur - wkOpen) / wkOpen) * 100;
+    const above = cur > wkOpen;
+    return {
+      wkOpen, cur, pct, above,
+      label: above ? `Above WO ▲ +${pct.toFixed(2)}%` : `Below WO ▼ ${pct.toFixed(2)}%`,
+      color: above ? 'var(--green)' : 'var(--red)',
+      desc:  above ? 'Bullish weekly bias' : 'Bearish weekly bias',
+    };
+  }
+
+  /* 5. Day-of-week seasonality */
+  function detectSeasonality(c1d) {
+    if (!c1d || c1d.length < 30) return null;
+    const map = DAYS.map(() => ({ wins: 0, total: 0 }));
+    c1d.forEach(c => {
+      const d = new Date(c.t).getUTCDay();
+      map[d].total++;
+      if (c.c > c.o) map[d].wins++;
+    });
+    const todayDow = new Date().getUTCDay();
+    const todayWR  = map[todayDow].total ? (map[todayDow].wins / map[todayDow].total) * 100 : 50;
+    const all = map.map((m,i)=>({ day: DAYS[i], wr: m.total ? m.wins/m.total*100 : 50, n: m.total }));
+    const weekdays = all.slice(1,6);
+    const best  = [...weekdays].sort((a,b)=>b.wr-a.wr).slice(0,2);
+    const worst = [...weekdays].sort((a,b)=>a.wr-b.wr).slice(0,2);
+    const color = todayWR >= 55 ? 'var(--green)' : todayWR <= 45 ? 'var(--red)' : 'var(--text-sub)';
+    return {
+      todayDay: DAYS[todayDow], todayWR, best, worst, color,
+      label: `${DAYS[todayDow]}: ${todayWR.toFixed(0)}% green`,
+      desc:  `Best: ${best.map(b=>b.day).join(', ')} · Worst: ${worst.map(w=>w.day).join(', ')}`,
+    };
+  }
+
+  /* 6. Asian range (last completed Asian session) */
+  function detectAsianRange(c1h) {
+    if (c1h.length < 30) return null;
+    const now = new Date();
+    const utcH = now.getUTCHours();
+    const asianEnd = utcH >= 9
+      ? Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 9)
+      : Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1, 9);
+    const asianStart = asianEnd - 13 * 3600 * 1000;
+    const bars = c1h.filter(c => c.t >= asianStart && c.t < asianEnd);
+    if (!bars.length) return null;
+    const aHi = Math.max(...bars.map(c=>c.h));
+    const aLo = Math.min(...bars.map(c=>c.l));
+    const cur = c1h.at(-1).c;
+    let status, color;
+    if (cur > aHi)      { status = 'Above Asian high — bullish breakout'; color = 'var(--green)'; }
+    else if (cur < aLo) { status = 'Below Asian low — bearish breakdown'; color = 'var(--red)'; }
+    else                { status = 'Inside Asian range — wait for break';  color = 'var(--text-sub)'; }
+    return { aHi, aLo, status, color };
+  }
+
+  /* ── Best / worst personal hours from trade log ──────── */
   function getBestWorst() {
-    const raw = typeof DB !== 'undefined' && DB.getTradesRaw ? DB.getTradesRaw() : (DB ? DB.getTrades() : []);
+    const raw = (typeof DB !== 'undefined' && DB.getTradesRaw) ? DB.getTradesRaw() : (typeof DB !== 'undefined' ? DB.getTrades() : []);
     const closed = (raw||[]).filter(t => t.result !== '' && t.result != null);
     const hmap = {};
     closed.forEach(t => {
@@ -387,25 +555,43 @@ const DojoTab = (() => {
     return { best:hours.slice(0,2), worst:hours.slice(-2).reverse(), ict };
   }
 
+  /* ══════════════════════════════════════════════════════
+     RUN ANALYSIS
+  ══════════════════════════════════════════════════════ */
   function runAnalysis() {
-    const c4 = _candles['4h']||[], c1 = _candles['1h']||[];
+    const c4  = _candles['4h']  || [];
+    const c1  = _candles['1h']  || [];
+    const c1d = _candles['1d']  || [];
     if (!c4.length) return null;
     const pd = allPD();
+    const formations = detectFormations();
+    const enriched = formations.map(f => ({ ...f, meta: SIG_META[f.type] || null, tier: tierFor(f, formations) }));
+    const conf = detectConfluence(pd);
     return {
+      // core
       trend:      detectTrend(c4),
       premDisc:   detectPremDisc(c4),
       structure:  detectStructure(c1.length ? c1 : c4),
       amd:        detectAMD(),
-      formations: detectFormations(),
-      liqSweeps:  detectLiqSweep(c1.length ? c1 : c4),
+      // extended
+      volatility: detectVolatility(c4),
+      dailyRange: detectDailyRange(c1, c1d),
+      pdhPdl:     detectPDHPDL(c1),
+      weeklyOpen: detectWeeklyOpen(c4),
+      seasonality:detectSeasonality(c1d),
+      asianRange: detectAsianRange(c1),
+      // pd + signals
       pdArrays:   pd,
-      confluence: detectConfluence(pd),
+      confluence: conf,
+      pdDir:      pdDirection(conf),
+      formations: enriched,
+      liqSweeps:  detectLiqSweep(c1.length ? c1 : c4),
       bestWorst:  getBestWorst(),
     };
   }
 
   /* ══════════════════════════════════════════════════════
-     RENDER
+     RENDERERS
   ══════════════════════════════════════════════════════ */
   function renderClocks() {
     const ct = getCityTimes();
@@ -433,7 +619,6 @@ const DojoTab = (() => {
     ];
     const kzBlocks = [
       { s:20, e:24, bg:'rgba(0,212,200,.45)' },
-      { s:0,  e:0,  bg:'rgba(0,212,200,.45)' },
       { s:7,  e:9.5,  bg:'rgba(79,142,247,.5)' },
       { s:13.5,e:16,  bg:'rgba(255,140,66,.5)' },
       { s:19, e:20, bg:'rgba(245,200,66,.5)' },
@@ -442,14 +627,15 @@ const DojoTab = (() => {
       <div class="dojo-tl-label">24h UTC Session Map</div>
       <div class="dojo-timeline">
         ${sessions.map(s=>`<div class="dojo-sess-block" style="left:${pct(s.s)};width:${wid(s.s,s.e)};background:${s.bg};border-top:2px solid ${s.bd}" title="${s.name} ${s.s}:00–${s.e}:00 UTC"><span>${s.name}</span></div>`).join('')}
-        ${kzBlocks.filter(k=>k.s<k.e).map(k=>`<div class="dojo-kz-block" style="left:${pct(k.s)};width:${wid(k.s,k.e)};background:${k.bg}"></div>`).join('')}
+        ${kzBlocks.map(k=>`<div class="dojo-kz-block" style="left:${pct(k.s)};width:${wid(k.s,k.e)};background:${k.bg}"></div>`).join('')}
         <div class="dojo-now-line" style="left:${pct(h)}"><span class="dojo-now-label">NOW</span></div>
         ${[0,3,6,9,12,15,18,21].map(t=>`<span class="dojo-hr-tick" style="left:${pct(t)}">${String(t).padStart(2,'0')}</span>`).join('')}
       </div>
     </div>`;
   }
 
-  function renderCards(s) {
+  /* ── Core conditions (4 cards) ──────────────────────── */
+  function renderCoreCards(s) {
     return `<div class="dojo-cards">
       <div class="dojo-card">
         <div class="dojo-card-lbl">Market Condition</div>
@@ -473,14 +659,57 @@ const DojoTab = (() => {
     </div>`;
   }
 
+  /* ── Extended conditions (6 cards) ──────────────────── */
+  function renderExtendedCards(s) {
+    const card = (lbl, val, sub, color) =>
+      `<div class="dojo-card">
+        <div class="dojo-card-lbl">${lbl}</div>
+        <div class="dojo-card-val" style="color:${color||'var(--text)'}">${val}</div>
+        ${sub ? `<div class="dojo-card-sub">${sub}</div>` : ''}
+      </div>`;
+
+    const pdhl = s.pdhPdl;
+    const pdhSub = pdhl ? `PDH ${fmtP(pdhl.pdh)} · PDL ${fmtP(pdhl.pdl)}` : '';
+    const wo   = s.weeklyOpen;
+    const woSub= wo ? `Open: ${fmtP(wo.wkOpen)} · ${wo.desc}` : '';
+    const ar   = s.asianRange;
+    const arSub= ar ? `Asia Hi ${fmtP(ar.aHi)} · Lo ${fmtP(ar.aLo)}` : '';
+    const seas = s.seasonality;
+
+    return `<div class="dojo-sec-hdr" style="margin-top:18px">Extended Conditions</div>
+    <div class="dojo-cards dojo-cards-6">
+      ${card('Volatility (ATR)',     s.volatility.label, s.volatility.desc, s.volatility.color)}
+      ${card('Daily Range Used',     s.dailyRange.label, s.dailyRange.desc, s.dailyRange.color)}
+      ${card('Previous Day H/L',     pdhl ? pdhl.status : '—', pdhSub, pdhl ? pdhl.color : 'var(--text-sub)')}
+      ${card('Weekly Open Bias',     wo ? wo.label : '—', woSub, wo ? wo.color : 'var(--text-sub)')}
+      ${card('Day-of-Week Bias',     seas ? seas.label : '—', seas ? seas.desc : '', seas ? seas.color : 'var(--text-sub)')}
+      ${card('Asian Range',          ar ? ar.status : '—', arSub, ar ? ar.color : 'var(--text-sub)')}
+    </div>`;
+  }
+
+  /* ── PD Arrays with direction badge ─────────────────── */
   function renderPD(s) {
     const conf = s.confluence;
+    const dir  = s.pdDir;
     const bulls = s.pdArrays.filter(p=>p.dir==='bull');
     const bears = s.pdArrays.filter(p=>p.dir==='bear');
     const dino  = conf.dino ? `<div class="dojo-dino">🦖 ${conf.total}+ PD ARRAY CONFLUENCE — High probability area!</div>` : '';
     const row = p => `<div class="dojo-pd-row"><span class="badge badge-dim" style="font-size:.6rem">${p.tf}</span><span class="dojo-pd-lbl">${p.label}</span><span class="dojo-pd-price">${fmtP((p.top+p.bot)/2)}</span></div>`;
+
+    const dirClass = dir.label === 'BULL DOMINANT' ? 'dir-bull'
+                   : dir.label === 'BEAR DOMINANT' ? 'dir-bear'
+                   : dir.label === 'NEUTRAL'       ? 'dir-neutral'
+                   : 'dir-unsure';
+
     return `<div class="dojo-section">
-      <div class="dojo-sec-hdr">Active PD Arrays <span class="badge ${conf.dino?'badge-red':'badge-dim'}" style="font-size:.65rem">${conf.bulls}↑ bull · ${conf.bears}↓ bear near price</span></div>
+      <div class="dojo-sec-hdr">Active PD Arrays <span class="badge badge-dim" style="font-size:.65rem">${conf.bulls}↑ bull · ${conf.bears}↓ bear near price</span></div>
+      <div class="dojo-dir-badge ${dirClass}">
+        <div class="dojo-dir-icon">${dir.icon}</div>
+        <div class="dojo-dir-text">
+          <div class="dojo-dir-label">${dir.label}</div>
+          <div class="dojo-dir-desc">${dir.desc}</div>
+        </div>
+      </div>
       ${dino}
       <div class="dojo-pd-grid">
         <div class="dojo-pd-col"><div class="dojo-pd-col-hdr" style="color:var(--green)">▲ Bullish</div>${bulls.length?bulls.map(row).join(''):'<p class="text-dim" style="font-size:.8rem;padding:8px 0">None nearby</p>'}</div>
@@ -489,33 +718,89 @@ const DojoTab = (() => {
     </div>`;
   }
 
-  function renderSignals(s) {
+  /* ── Rich Formation Signals table ───────────────────── */
+  function renderFormationsTable(s) {
+    if (!s.formations.length) {
+      return `<div class="dojo-section">
+        <div class="dojo-sec-hdr">Formation Signals</div>
+        <p class="text-dim" style="font-size:.85rem">No formation signals on current candles</p>
+      </div>`;
+    }
+    const tfChip = (tf) => {
+      const colors = { '15m':'var(--gold)', '1h':'var(--accent)', '4h':'var(--orange)', '1d':'var(--red)' };
+      const col = colors[tf] || 'var(--text-sub)';
+      return `<span class="dojo-tf-chip">${tf} <span class="dojo-tf-diamond" style="color:${col}">◆</span></span>`;
+    };
+    const tierBadge = (t) => `<span class="dojo-tier dojo-tier-${t.toLowerCase()}">${t}</span>`;
+    return `<div class="dojo-section">
+      <div class="dojo-sec-hdr">Formation Signals</div>
+      <table class="dojo-sig-table">
+        <thead>
+          <tr>
+            <th>Signal</th>
+            <th>Best TF</th>
+            <th>Best days</th>
+            <th>Hold time</th>
+            <th>Why this day/TF</th>
+            <th>Tier</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${s.formations.map(f => {
+            const m = f.meta;
+            const sigCell = `<div style="display:flex;align-items:center;gap:6px"><span style="color:${f.color};font-weight:600">${f.type}</span></div><div class="text-dim" style="font-size:.7rem;margin-top:2px">${f.desc}</div>`;
+            return `<tr>
+              <td>${sigCell}</td>
+              <td>${m ? m.bestTF.map(tfChip).join(' ') : '—'}</td>
+              <td>${m ? m.bestDays.join(', ') : '—'}</td>
+              <td>${m ? m.holdTime : '—'}</td>
+              <td class="dojo-why-cell">${m ? m.why : '—'}</td>
+              <td>${tierBadge(f.tier)}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  }
+
+  /* ── Times to Trade — split into 2 cards ─────────────── */
+  function renderTimesAndSweeps(s) {
     const bw = s.bestWorst;
-    const ictMap = { good:['✅ Good time — killzone active','var(--green)'], avoid:['⛔ Avoid — off-hours','var(--red)'], neutral:['🟡 Neutral — low conviction','var(--gold)'] };
+    const ictMap = {
+      good:    ['✅ Good time — killzone active', 'var(--green)'],
+      avoid:   ['⛔ Avoid — off-hours',           'var(--red)'],
+      neutral: ['🟡 Neutral — low conviction',    'var(--gold)'],
+    };
     const [ictLabel, ictColor] = ictMap[bw.ict];
+    const activeKZ = kzStatus().find(k => k.active);
+    const nextKZ   = kzStatus().filter(k => !k.active).sort((a,b) => a.minsTo - b.minsTo)[0];
     const hLabel = h => `${String(h).padStart(2,'0')}:00 UTC`;
-    const formHtml = s.formations.length
-      ? s.formations.map(f=>`<div class="dojo-sig-row" style="color:${f.color}">⚠️ ${f.desc}</div>`).join('')
-      : '<p class="text-dim" style="font-size:.8rem">No formation signals on current candles</p>';
+
     const sweepHtml = s.liqSweeps.length
       ? s.liqSweeps.map(sw=>`<div class="dojo-sig-row" style="color:${sw.color}">⚡ ${sw.label}</div>`).join('')
       : '<p class="text-dim" style="font-size:.8rem">No active sweep detected</p>';
+
     return `<div class="dojo-sig-grid">
       <div class="dojo-card">
-        <div class="dojo-card-lbl">Formation Signals</div>${formHtml}
-      </div>
-      <div class="dojo-card">
-        <div class="dojo-card-lbl">Liquidity Sweeps</div>${sweepHtml}
-      </div>
-      <div class="dojo-card">
-        <div class="dojo-card-lbl">Best Time to Trade Now</div>
+        <div class="dojo-card-lbl">ICT Killzone Status</div>
         <div class="dojo-card-val" style="color:${ictColor}">${ictLabel}</div>
-        <div class="dojo-card-sub" style="margin-top:8px">📈 Your best: ${bw.best.length ? bw.best.map(x=>`${hLabel(x.h)} (${(x.wr*100).toFixed(0)}%WR)`).join(', ') : 'Log more trades'}</div>
-        <div class="dojo-card-sub">📉 Your worst: ${bw.worst.length ? bw.worst.map(x=>`${hLabel(x.h)} (${(x.wr*100).toFixed(0)}%WR)`).join(', ') : '—'}</div>
+        <div class="dojo-card-sub" style="margin-top:8px">${activeKZ ? `🟢 <strong>${activeKZ.name}</strong> active now` : 'No killzone active'}</div>
+        <div class="dojo-card-sub">${nextKZ ? `Next: ${nextKZ.name} in ${fmtCD(nextKZ.minsTo)}` : ''}</div>
+      </div>
+      <div class="dojo-card">
+        <div class="dojo-card-lbl">Your Personal Hours</div>
+        <div class="dojo-card-val" style="font-size:.85rem">📊 From your trade log</div>
+        <div class="dojo-card-sub" style="margin-top:8px;color:var(--green)">📈 Best: ${bw.best.length ? bw.best.map(x=>`${hLabel(x.h)} (${(x.wr*100).toFixed(0)}% WR · ${x.n} trades)`).join('<br>') : 'Log more trades'}</div>
+        <div class="dojo-card-sub" style="color:var(--red);margin-top:6px">📉 Worst: ${bw.worst.length ? bw.worst.map(x=>`${hLabel(x.h)} (${(x.wr*100).toFixed(0)}% WR · ${x.n} trades)`).join('<br>') : '—'}</div>
+      </div>
+      <div class="dojo-card">
+        <div class="dojo-card-lbl">Liquidity Sweeps</div>
+        ${sweepHtml}
       </div>
     </div>`;
   }
 
+  /* ── Killzone countdowns ────────────────────────────── */
   function renderKZCountdowns() {
     const kz = kzStatus();
     return `<div class="dojo-kz-row">
@@ -527,7 +812,25 @@ const DojoTab = (() => {
     </div>`;
   }
 
-  /* ── Partial updates (no full re-render) ─────────────── */
+  /* ── Pair selector (chips) ──────────────────────────── */
+  function renderPairChips() {
+    return `<div class="dojo-pair-chips">
+      ${_customPairs.map(p => {
+        const active = p === _pair;
+        const isProtected = PROTECTED.includes(p);
+        return `<div class="dojo-pair-chip${active?' active':''}">
+          <span onclick="DojoTab._pair('${p}')" style="cursor:pointer">${p.replace('USDT','')}</span>
+          ${!isProtected ? `<button onclick="DojoTab._removePair('${p}')" class="chip-rm" title="Remove">✕</button>` : ''}
+        </div>`;
+      }).join('')}
+      <div class="dojo-pair-add">
+        <input type="text" id="dojoCustomPair" placeholder="+ Add pair (e.g. SOL)" maxlength="20"
+          onkeydown="if(event.key==='Enter'){DojoTab._addPair(this.value);this.value=''}" />
+      </div>
+    </div>`;
+  }
+
+  /* ── Partial updates ─────────────────────────────────── */
   function updateStatus(msg) {
     const el = document.getElementById('dojoStatus');
     if (el) el.innerHTML = msg || (_fetchErr ? `<span style="color:var(--red)">⚠ ${_fetchErr}</span>` : `<span class="text-dim">Updated ${_lastFetch ? ago(_lastFetch) : '…'}</span>`);
@@ -537,18 +840,21 @@ const DojoTab = (() => {
     updateStatus();
     const el = document.getElementById('dojoBody');
     if (!el) return;
-    if (_fetchErr) { el.innerHTML = `<div class="empty-state"><div class="empty-icon">📡</div><p>Could not reach Binance: ${_fetchErr}</p><p class="text-dim" style="font-size:.85rem">Check your internet connection and try refreshing.</p></div>`; return; }
-    if (!_signals)  { el.innerHTML = `<div class="empty-state"><div class="empty-icon">📊</div><p>Waiting for data…</p></div>`; return; }
-    // Also update ticker price
+    if (_fetchErr) { el.innerHTML = `<div class="empty-state"><div class="empty-icon">📡</div><p>Could not reach Binance: ${_fetchErr}</p><p class="text-dim" style="font-size:.85rem">Check your pair name (must be a valid Binance USDT pair) and connection.</p></div>`; return; }
+    if (!_signals) { el.innerHTML = `<div class="empty-state"><div class="empty-icon">📊</div><p>Waiting for data…</p></div>`; return; }
     const tickEl = document.getElementById('dojoTicker');
     if (tickEl && _ticker) {
       const chg = parseFloat(_ticker.priceChangePercent);
       tickEl.innerHTML = `<span class="dojo-price">${fmtP(parseFloat(_ticker.lastPrice))}</span> <span style="color:${chg>=0?'var(--green)':'var(--red)'}">${chg>=0?'+':''}${chg.toFixed(2)}% 24h</span>`;
     }
-    el.innerHTML = renderCards(_signals) + renderPD(_signals) + renderSignals(_signals);
+    el.innerHTML =
+      renderCoreCards(_signals) +
+      renderExtendedCards(_signals) +
+      renderPD(_signals) +
+      renderFormationsTable(_signals) +
+      renderTimesAndSweeps(_signals);
   }
 
-  /* ── Clock + KZ tick every second ────────────────────── */
   function startTick() {
     if (_clockTimer) clearInterval(_clockTimer);
     _clockTimer = setInterval(() => {
@@ -560,7 +866,7 @@ const DojoTab = (() => {
     }, 1000);
   }
 
-  /* ── Full render (on tab open) ───────────────────────── */
+  /* ── Full render ─────────────────────────────────────── */
   function render() {
     if (_pollTimer)  clearInterval(_pollTimer);
     if (_clockTimer) clearInterval(_clockTimer);
@@ -569,16 +875,7 @@ const DojoTab = (() => {
     content.innerHTML = `<div class="dojo-wrap">
 
       <div class="dojo-top-bar">
-        <div class="dojo-pair-tabs">
-          <button class="dojo-pair-btn${_pair==='BTCUSDT'?' active':''}" onclick="DojoTab._pair('BTCUSDT')">₿ BTC</button>
-          <button class="dojo-pair-btn${_pair==='ETHUSDT'?' active':''}" onclick="DojoTab._pair('ETHUSDT')">Ξ ETH</button>
-          <button class="dojo-pair-btn${_pair==='XRPUSDT'?' active':''}" onclick="DojoTab._pair('XRPUSDT')">✕ XRP</button>
-        </div>
-        <div class="dojo-ticker-input">
-          <input type="text" id="dojoCustomPair" placeholder="e.g. SOLUSDT" title="Any Binance USDT pair" maxlength="20"
-            onkeydown="if(event.key==='Enter'){DojoTab._customPair(this.value)}" />
-          <button class="btn-ghost btn-sm" onclick="DojoTab._customPair(document.getElementById('dojoCustomPair').value)">Go</button>
-        </div>
+        ${renderPairChips()}
         <div id="dojoTicker" class="dojo-ticker">—</div>
         <div id="dojoStatus" class="text-dim" style="font-size:.78rem">Connecting…</div>
         <button class="btn-ghost btn-sm" onclick="DojoTab._refresh()">↻ Refresh</button>
@@ -605,13 +902,24 @@ const DojoTab = (() => {
 
   return {
     render,
-    _pair:    p  => { _pair = p; render(); },
+    _pair:    p   => { _pair = p; render(); },
     _refresh: ()  => loadData(),
-    _customPair: raw => {
-      const sym = raw.trim().toUpperCase().replace('/', '');
+    _addPair: raw => {
+      const sym = (raw||'').trim().toUpperCase().replace('/', '');
       if (!sym) return;
-      // append USDT if user typed e.g. "SOL"
-      _pair = sym.endsWith('USDT') ? sym : sym + 'USDT';
+      const full = sym.endsWith('USDT') ? sym : sym + 'USDT';
+      if (!_customPairs.includes(full)) {
+        _customPairs.push(full);
+        savePairs();
+      }
+      _pair = full;
+      render();
+    },
+    _removePair: sym => {
+      if (PROTECTED.includes(sym)) return;
+      _customPairs = _customPairs.filter(p => p !== sym);
+      savePairs();
+      if (_pair === sym) _pair = PROTECTED[0];
       render();
     },
   };

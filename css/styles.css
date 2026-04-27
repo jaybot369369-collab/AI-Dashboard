@@ -1515,3 +1515,101 @@ input.date-picker::-webkit-calendar-picker-indicator {
 .dojo-kz-card.kz-card-on { border-color: var(--green); background: var(--green-dim); }
 .dojo-kz-name   { font-size: .72rem; font-weight: 600; margin-bottom: 4px; }
 .dojo-kz-val    { font-size: 1.1rem; font-weight: 700; font-family: var(--mono); color: var(--text); }
+
+/* ═══════════════════════════════════════════════════════════
+   ICT DOJO v2 — additions
+════════════════════════════════════════════════════════════ */
+
+/* Pair chips */
+.dojo-pair-chips {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+}
+.dojo-pair-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--bg-mid); border: 1px solid var(--border);
+  border-radius: 20px; padding: 4px 10px;
+  font-size: .8rem; color: var(--text-sub);
+  transition: all var(--transition);
+}
+.dojo-pair-chip:hover { border-color: var(--accent); color: var(--text); }
+.dojo-pair-chip.active {
+  background: var(--accent-dim); border-color: var(--accent); color: var(--accent);
+  font-weight: 600;
+}
+.dojo-pair-chip .chip-rm {
+  cursor: pointer; opacity: .55; font-size: .7rem; line-height: 1;
+  background: none; border: none; color: inherit; padding: 0 2px;
+}
+.dojo-pair-chip .chip-rm:hover { opacity: 1; color: var(--red); }
+.dojo-pair-add input {
+  width: 130px; padding: 4px 10px;
+  border-radius: 20px; border: 1px dashed var(--border);
+  background: transparent; color: var(--text); font-size: .78rem;
+  text-transform: uppercase;
+}
+.dojo-pair-add input:focus { outline: none; border-color: var(--accent); border-style: solid; }
+
+/* Extended conditions grid (6 cards) */
+.dojo-cards-6 { grid-template-columns: repeat(3, 1fr); margin-top: 8px; }
+@media (max-width: 1100px) { .dojo-cards-6 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px)  { .dojo-cards-6 { grid-template-columns: 1fr; } }
+
+/* PD Direction badge */
+.dojo-dir-badge {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 18px; border-radius: var(--radius-sm);
+  margin-bottom: 14px; border: 2px solid;
+  background: var(--bg-mid);
+  transition: all var(--transition);
+}
+.dojo-dir-badge.dir-bull    { border-color: var(--green); background: var(--green-dim); box-shadow: 0 0 18px rgba(0,200,150,.18); }
+.dojo-dir-badge.dir-bear    { border-color: var(--red);   background: var(--red-dim);   box-shadow: 0 0 18px rgba(255,77,106,.18); }
+.dojo-dir-badge.dir-neutral { border-color: var(--gold);  background: var(--gold-dim); }
+.dojo-dir-badge.dir-unsure  { border-color: var(--border); background: var(--bg-mid); }
+.dojo-dir-icon  { font-size: 2rem; line-height: 1; }
+.dojo-dir-text  { flex: 1; }
+.dojo-dir-label { font-size: 1.1rem; font-weight: 800; letter-spacing: .03em; }
+.dojo-dir-desc  { font-size: .8rem; color: var(--text-sub); margin-top: 2px; }
+
+.dojo-dir-badge.dir-bull .dojo-dir-label    { color: var(--green); }
+.dojo-dir-badge.dir-bear .dojo-dir-label    { color: var(--red); }
+.dojo-dir-badge.dir-neutral .dojo-dir-label { color: var(--gold); }
+.dojo-dir-badge.dir-unsure .dojo-dir-label  { color: var(--text-sub); }
+
+/* Rich Formation Signals table */
+.dojo-sig-table {
+  width: 100%; border-collapse: collapse;
+  font-size: .82rem;
+}
+.dojo-sig-table thead th {
+  text-align: left; padding: 8px 10px;
+  font-size: .68rem; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text-sub); font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+.dojo-sig-table tbody td {
+  padding: 10px;
+  border-bottom: 1px solid var(--border-sub);
+  vertical-align: top;
+}
+.dojo-sig-table tbody tr:last-child td { border-bottom: none; }
+.dojo-sig-table tbody tr:hover { background: var(--bg-mid); }
+.dojo-why-cell { color: var(--text-sub); font-size: .76rem; line-height: 1.4; max-width: 320px; }
+
+.dojo-tf-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  background: var(--bg-mid); border: 1px solid var(--border);
+  border-radius: 12px; padding: 2px 8px;
+  font-size: .72rem; font-family: var(--mono);
+  color: var(--text);
+  margin-right: 4px;
+}
+.dojo-tf-diamond { font-size: .7rem; }
+
+.dojo-tier {
+  display: inline-block; padding: 3px 10px;
+  border-radius: 4px; font-weight: 800; font-size: .82rem;
+  letter-spacing: .05em;
+}
+.dojo-tier-a { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+.dojo-tier-b { background: var(--gold-dim);  color: var(--gold);  border: 1px solid var(--gold); }
