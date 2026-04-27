@@ -16,7 +16,7 @@
   <div class="sidebar-header">
     <div class="logo">
       <span class="logo-icon">⚡</span>
-      <span class="logo-text">JayBot</span>
+      <span class="logo-text">AI Dashboard</span>
     </div>
     <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">&#8249;</button>
   </div>
@@ -256,11 +256,11 @@
             <textarea id="fNotes" rows="3" placeholder="Any thoughts on this trade…"></textarea>
           </div>
           <div class="form-group">
-            <label>Screenshot URL or Upload</label>
-            <input type="url" id="fScreenshotUrl" placeholder="https://… or upload below" />
-            <input type="file" id="fScreenshotFile" accept="image/*" style="margin-top:6px;font-size:.8rem"
-                   onchange="(function(e){var f=e.target.files[0];if(!f)return;if(f.size>2*1024*1024){App.toast('Image too large (max 2MB)','error');e.target.value='';return;}var r=new FileReader();r.onload=function(ev){document.getElementById('fScreenshotUrl').value=ev.target.result;App.toast('Image attached');};r.readAsDataURL(f);})(event)" />
-            <div id="fScreenshotPreview" style="margin-top:8px"></div>
+            <label>Screenshots <span class="text-xs text-sub">(URLs or uploads — multiple allowed)</span></label>
+            <input type="text" id="fScreenshotUrl" placeholder="paste URL(s), comma-separated, or upload below" />
+            <input type="file" id="fScreenshotFile" accept="image/*" multiple style="margin-top:6px;font-size:.8rem"
+                   onchange="App._handleScreenshotFiles(event)" />
+            <div id="fScreenshotPreview" class="screenshot-preview-grid" style="margin-top:10px"></div>
           </div>
         </fieldset>
 
@@ -269,16 +269,16 @@
           <legend>Date &amp; Time</legend>
           <div class="form-row">
             <div class="form-group">
-              <label>Start Date</label>
-              <input type="date" id="fDate" required />
+              <label>📅 Start Date <span class="text-xs text-sub">(click to open calendar)</span></label>
+              <input type="date" id="fDate" required class="date-picker" onclick="this.showPicker && this.showPicker()" />
             </div>
             <div class="form-group">
-              <label>End Date <span class="text-xs text-sub">(blank = same day)</span></label>
-              <input type="date" id="fDateEnd" />
+              <label>📅 End Date <span class="text-xs text-sub">(blank = same day)</span></label>
+              <input type="date" id="fDateEnd" class="date-picker" onclick="this.showPicker && this.showPicker()" />
             </div>
             <div class="form-group">
-              <label>Time (optional)</label>
-              <input type="time" id="fTime" />
+              <label>🕐 Time (optional)</label>
+              <input type="time" id="fTime" class="date-picker" onclick="this.showPicker && this.showPicker()" />
             </div>
           </div>
         </fieldset>

@@ -160,8 +160,14 @@ const TradeLogTab = (() => {
     ).join('');
 
     const notes = t.notes ? `<div class="expand-field" style="grid-column:1/-1"><span class="ef-label">Notes</span><span class="ef-val">${t.notes}</span></div>` : '';
-    const ss = t.screenshotUrl
-      ? `<div class="expand-field" style="grid-column:1/-1"><span class="ef-label">Screenshot</span><div class="ef-val"><img src="${t.screenshotUrl}" style="max-width:100%;max-height:300px;border-radius:6px;border:1px solid var(--border-sub);display:block;margin-top:6px;cursor:pointer" onclick="window.open(this.src,'_blank')" onerror="this.outerHTML='<a href=&quot;'+this.src+'&quot; target=_blank>Open image</a>'" /></div></div>`
+    const urls = t.screenshotUrl ? t.screenshotUrl.split(/,(?![^()]*\))/).map(s => s.trim()).filter(Boolean) : [];
+    const ss = urls.length
+      ? `<div class="expand-field" style="grid-column:1/-1">
+           <span class="ef-label">Screenshots (${urls.length})</span>
+           <div class="ef-val" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-top:6px">
+             ${urls.map(u => `<img src="${u}" style="width:100%;max-height:200px;object-fit:cover;border-radius:6px;border:1px solid var(--border-sub);cursor:pointer" onclick="window.open(this.src,'_blank')" onerror="this.style.opacity=0.3" />`).join('')}
+           </div>
+         </div>`
       : '';
 
     return fieldHtml + notes + ss;

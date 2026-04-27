@@ -148,15 +148,19 @@ const App = (() => {
     $('fSetupCustomGroup').classList.add('hidden');
     $('fSetupCustom').value = '';
 
-    // Wire screenshot preview
+    // Wire screenshot preview (multi-image)
     const urlEl = $('fScreenshotUrl');
     const prevEl = $('fScreenshotPreview');
     const showPrev = () => {
       if (!urlEl || !prevEl) return;
       const v = urlEl.value.trim();
-      prevEl.innerHTML = v
-        ? `<img src="${v}" style="max-width:100%;max-height:140px;border-radius:6px;border:1px solid var(--border-sub)" onerror="this.style.display='none'" />`
-        : '';
+      const urls = v ? v.split(/,(?![^()]*\))/).map(s => s.trim()).filter(Boolean) : [];
+      prevEl.innerHTML = urls.map((u, i) =>
+        `<div class="screenshot-thumb">
+          <img src="${u}" onerror="this.style.opacity=0.3" />
+          <button type="button" class="thumb-remove" onclick="App._removeScreenshot(${i})">✕</button>
+        </div>`
+      ).join('');
     };
     if (urlEl && !urlEl._wired) { urlEl.addEventListener('input', showPrev); urlEl._wired = true; }
     showPrev();
@@ -467,6 +471,42 @@ const App = (() => {
     navigate,
     getDateFilter,
     getDataMode,
+    _handleScreenshotFiles: (e) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+      const urlEl = document.getElementById('fScreenshotUrl');
+      const existing = urlEl.value.trim();
+      let pending = files.length;
+      const newUrls = [];
+      files.forEach((f, idx) => {
+        if (f.size > 2 * 1024 * 1024) {
+          toast(`${f.name} too large (max 2MB)`, 'error');
+          if (--pending === 0) appendUrls();
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          newUrls[idx] = ev.target.result;
+          if (--pending === 0) appendUrls();
+        };
+        reader.readAsDataURL(f);
+      });
+      function appendUrls() {
+        const filtered = newUrls.filter(Boolean);
+        const merged = existing ? existing + ',' + filtered.join(',') : filtered.join(',');
+        urlEl.value = merged;
+        urlEl.dispatchEvent(new Event('input'));
+        toast(`${filtered.length} image${filtered.length !== 1 ? 's' : ''} attached`);
+        e.target.value = '';
+      }
+    },
+    _removeScreenshot: (idx) => {
+      const urlEl = document.getElementById('fScreenshotUrl');
+      const urls = urlEl.value.split(/,(?![^()]*\))/).map(s => s.trim()).filter(Boolean);
+      urls.splice(idx, 1);
+      urlEl.value = urls.join(',');
+      urlEl.dispatchEvent(new Event('input'));
+    },
     openTradeModal,
     closeTradeModal,
     confirmDelete,

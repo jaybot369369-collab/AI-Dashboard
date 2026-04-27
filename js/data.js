@@ -528,9 +528,165 @@ const DB = (() => {
       ],
       screenshotUrl: '', winRate: null, avgR: null, tradeCount: 0
     },
+    {
+      id: 'orderblock', name: 'Order Block Mitigation', description: 'Last opposing candle before a strong displacement move. Re-enter on retest of the OB body or wick.',
+      entryRules: 'Mark the bullish/bearish OB (last down-candle before up-move, or last up-candle before down-move). Enter on retest of the body high/low.',
+      slRules: 'SL below the OB low (long) / above the OB high (short).',
+      tpRules: 'TP1 at displacement origin. TP2 at next liquidity pool.',
+      checklist: [
+        { label: 'OB created by impulsive displacement', checked: false },
+        { label: 'OB has not been mitigated yet', checked: false },
+        { label: 'Aligned with HTF bias', checked: false },
+        { label: 'Confluence: OB + FVG or OB + OTE', checked: false },
+      ],
+      screenshotUrl: '', winRate: null, avgR: null, tradeCount: 0
+    },
+    {
+      id: 'breaker', name: 'Breaker Block', description: 'Failed order block — once an OB is broken through and retested from the other side, it flips polarity (bullish breaker = old bearish OB).',
+      entryRules: 'Identify a broken OB. Wait for retest from the new direction. Enter on rejection at the breaker.',
+      slRules: 'SL beyond the breaker block extreme.',
+      tpRules: 'TP at next liquidity pool / opposing breaker. 2:1 minimum.',
+      checklist: [
+        { label: 'OB clearly broken with displacement', checked: false },
+        { label: 'BOS in new direction confirmed', checked: false },
+        { label: 'Retest of breaker happening now', checked: false },
+        { label: 'Killzone session active', checked: false },
+      ],
+      screenshotUrl: '', winRate: null, avgR: null, tradeCount: 0
+    },
+    {
+      id: 'mitigation', name: 'Mitigation Block', description: 'Internal range OB used as a hidden support/resistance during pullbacks within trends. Often invisible without ICT framework.',
+      entryRules: 'Within an established trend, mark the last counter-trend OB. Enter on first touch with rejection wick.',
+      slRules: 'Tight SL beyond the mitigation block extreme — usually <0.5% on crypto majors.',
+      tpRules: 'TP at trend continuation high/low. Trail to BE after 1R.',
+      checklist: [
+        { label: 'Trending structure (HH/HL or LH/LL)', checked: false },
+        { label: 'Mitigation block clearly identified', checked: false },
+        { label: 'No conflicting HTF FVG above', checked: false },
+        { label: 'Killzone session active', checked: false },
+      ],
+      screenshotUrl: '', winRate: null, avgR: null, tradeCount: 0
+    },
+    {
+      id: 'turtlesoup', name: 'Turtle Soup (False Breakout)', description: 'Stop hunt above/below a previous high/low followed by immediate reversal. Classic liquidity grab.',
+      entryRules: 'Wait for break of prior swing high/low. Re-enter when price closes back inside the range. Confirm with LTF BOS.',
+      slRules: 'SL above the swept high / below swept low.',
+      tpRules: 'TP at opposite extreme of the range. Often 3R+.',
+      checklist: [
+        { label: 'Clear prior swing high or low swept', checked: false },
+        { label: 'Wick rejection confirmed', checked: false },
+        { label: 'LTF BOS in opposite direction', checked: false },
+        { label: 'Counter-trend HTF or range condition', checked: false },
+      ],
+      screenshotUrl: '', winRate: null, avgR: null, tradeCount: 0
+    },
+    {
+      id: 'silver-bullet', name: 'Silver Bullet (15m window)', description: 'ICT 15-min window setup: 10–11 AM NY (and London 03:00–04:00 NY) — fade liquidity sweeps with FVG entries.',
+      entryRules: 'Inside the 15-min window, look for a liquidity sweep + FVG creation. Enter on FVG retest.',
+      slRules: 'SL above/below the sweep extreme. Tight risk.',
+      tpRules: 'TP at next draw on liquidity. 2–4R typical.',
+      checklist: [
+        { label: 'Inside Silver Bullet window (10–11 AM NY)', checked: false },
+        { label: 'Sweep + FVG combo formed', checked: false },
+        { label: 'HTF draw on liquidity defined', checked: false },
+        { label: 'Risk capped to 0.5% account', checked: false },
+      ],
+      screenshotUrl: '', winRate: null, avgR: null, tradeCount: 0
+    },
+    {
+      id: 'asian-range', name: 'Asian Range Breakout', description: 'Asian session range marked as liquidity. London/NY breakout takes the range edge then reverses or continues.',
+      entryRules: 'Mark Asian high/low (00:00–06:00 UTC). On London open, wait for sweep of one extreme + LTF BOS, then enter retracement.',
+      slRules: 'SL beyond the swept Asian extreme.',
+      tpRules: 'TP at opposite Asian extreme (full range), then daily liquidity beyond.',
+      checklist: [
+        { label: 'Asian range clearly defined and tight', checked: false },
+        { label: 'London or NY killzone active', checked: false },
+        { label: 'Sweep + reversal confirmed', checked: false },
+        { label: 'HTF bias provides directional bias', checked: false },
+      ],
+      screenshotUrl: '', winRate: null, avgR: null, tradeCount: 0
+    },
+    {
+      id: 'pdh-pdl', name: 'Previous Day High/Low Sweep', description: 'PDH/PDL act as magnets for liquidity. Sweep + reversal on the next session is a classic ICT play.',
+      entryRules: 'Mark PDH and PDL. Wait for sweep during current session killzone. Enter on rejection candle close.',
+      slRules: 'SL just beyond the swept high/low (usually 5–10 pips on crypto).',
+      tpRules: 'TP at opposite PDH/PDL or weekly high/low.',
+      checklist: [
+        { label: 'PDH/PDL clearly marked on chart', checked: false },
+        { label: 'Sweep happens in killzone', checked: false },
+        { label: 'Rejection candle visible (long wick)', checked: false },
+        { label: 'HTF bias confirms reversal direction', checked: false },
+      ],
+      screenshotUrl: '', winRate: null, avgR: null, tradeCount: 0
+    },
+    {
+      id: 'weekly-bias', name: 'Weekly Bias Continuation (Swing)', description: 'Swing trade aligned with the weekly bias. Enter on H4 OTE/FVG after a daily pullback.',
+      entryRules: 'Determine weekly bias from W1 candle structure. On daily pullback, mark H4 OTE or FVG. Enter on H1 confirmation.',
+      slRules: 'SL beyond the H4 swing low/high. Wider stops, smaller size.',
+      tpRules: 'TP at weekly liquidity (prior weekly high/low). 5R+ targets.',
+      checklist: [
+        { label: 'Weekly bias clear (W1 close direction)', checked: false },
+        { label: 'Daily pullback into discount/premium', checked: false },
+        { label: 'H4 OTE or FVG aligned', checked: false },
+        { label: 'No major weekly news event ahead', checked: false },
+        { label: 'Position size <0.25% per R', checked: false },
+      ],
+      screenshotUrl: '', winRate: null, avgR: null, tradeCount: 0
+    },
+    {
+      id: 'rebalance', name: 'Rebalance / Equilibrium Trade', description: 'Price tends to return to the 50% of a previous range or impulse leg. Trade the bounce off equilibrium.',
+      entryRules: 'Mark the recent impulse leg. Calculate 50% level. Enter on tap with rejection wick.',
+      slRules: 'SL at 62% of the same leg.',
+      tpRules: 'TP at full retracement back to impulse origin. Usually 1.5–3R.',
+      checklist: [
+        { label: 'Impulsive leg clearly identified', checked: false },
+        { label: '50% equilibrium level marked', checked: false },
+        { label: 'Reaction candle on tap', checked: false },
+        { label: 'No conflicting OB above 50%', checked: false },
+      ],
+      screenshotUrl: '', winRate: null, avgR: null, tradeCount: 0
+    },
+    {
+      id: 'power-of-three', name: 'Power of Three (AMD)', description: 'Accumulation → Manipulation → Distribution. Daily candle plays out as an Asian accumulation, London manipulation (sweep), NY distribution (run).',
+      entryRules: 'After London sweeps Asian range, enter NY open in direction of HTF bias on confirmation.',
+      slRules: 'SL beyond the London manipulation extreme.',
+      tpRules: 'TP at NY session high/low or daily target. 3–5R typical.',
+      checklist: [
+        { label: 'Asian range tight (accumulation)', checked: false },
+        { label: 'London swept one side (manipulation)', checked: false },
+        { label: 'NY open about to start (distribution)', checked: false },
+        { label: 'HTF bias confirms NY direction', checked: false },
+      ],
+      screenshotUrl: '', winRate: null, avgR: null, tradeCount: 0
+    },
+    {
+      id: 'scalp-mss', name: 'Scalp: Market Structure Shift (LTF)', description: '1-min/5-min scalp on shift in market structure inside a killzone. Quick in, quick out.',
+      entryRules: 'On 1m/5m, identify CHOCH then BOS in new direction. Enter on first FVG fill.',
+      slRules: 'SL above/below the CHOCH high/low. Very tight.',
+      tpRules: 'TP at next 5m liquidity pool. 1–2R, take profit aggressively.',
+      checklist: [
+        { label: 'Inside an active killzone', checked: false },
+        { label: 'Clear MSS on 1m/5m', checked: false },
+        { label: 'FVG fill within 3 candles', checked: false },
+        { label: 'Risk ≤0.25% (small scalp)', checked: false },
+      ],
+      screenshotUrl: '', winRate: null, avgR: null, tradeCount: 0
+    },
   ];
 
-  function getPlaybook() { return load(KEYS.play) || DEFAULT_PLAYBOOK; }
+  function getPlaybook() {
+    const saved = load(KEYS.play);
+    if (!saved) return DEFAULT_PLAYBOOK;
+    // Merge: add any DEFAULT setup whose id isn't in saved (one-time top-up for new defaults)
+    const savedIds = new Set(saved.map(s => s.id));
+    const newDefaults = DEFAULT_PLAYBOOK.filter(d => !savedIds.has(d.id));
+    if (newDefaults.length) {
+      const merged = [...saved, ...newDefaults];
+      save(KEYS.play, merged);
+      return merged;
+    }
+    return saved;
+  }
   function savePlaybook(arr) { save(KEYS.play, arr); }
   function addSetup(s) {
     const pb = getPlaybook();
