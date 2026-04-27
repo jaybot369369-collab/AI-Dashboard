@@ -1385,3 +1385,133 @@ input.date-picker::-webkit-calendar-picker-indicator {
   font-size: 0.85rem;
 }
 .day-trade-row:last-child { border-bottom: none; }
+
+/* ═══════════════════════════════════════════════════════════
+   ICT DOJO TAB
+════════════════════════════════════════════════════════════ */
+.dojo-wrap { display: flex; flex-direction: column; gap: 14px; }
+
+/* Top bar */
+.dojo-top-bar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 16px;
+}
+.dojo-pair-tabs { display: flex; gap: 4px; }
+.dojo-pair-btn {
+  padding: 5px 14px; border-radius: 20px; border: 1px solid var(--border);
+  background: var(--bg-mid); color: var(--text-sub); font-size: .82rem;
+  cursor: pointer; transition: all var(--transition);
+}
+.dojo-pair-btn.active, .dojo-pair-btn:hover {
+  background: var(--accent-dim); border-color: var(--accent); color: var(--accent);
+}
+.dojo-ticker-input {
+  display: flex; align-items: center; gap: 6px; margin-left: 4px;
+}
+.dojo-ticker-input input {
+  width: 110px; padding: 4px 10px; border-radius: 20px;
+  border: 1px solid var(--border); background: var(--bg-mid);
+  color: var(--text); font-size: .82rem; text-transform: uppercase;
+}
+.dojo-ticker-input input:focus { outline: none; border-color: var(--accent); }
+.dojo-ticker { margin-left: auto; font-size: .9rem; font-weight: 600; }
+.dojo-price  { font-size: 1.05rem; font-weight: 700; color: var(--text); }
+
+/* City clocks */
+.dojo-clocks {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+}
+@media (max-width: 700px) { .dojo-clocks { grid-template-columns: repeat(2, 1fr); } }
+.dojo-clock-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 10px 14px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.dojo-clock-card.kz-lit { border-color: var(--green); box-shadow: 0 0 10px rgba(0,200,150,.2); }
+.dojo-flag      { font-size: 1.2rem; }
+.dojo-clk-label { font-size: .72rem; color: var(--text-sub); text-transform: uppercase; letter-spacing: .04em; }
+.dojo-clk-time  { font-size: .88rem; font-weight: 600; font-family: var(--mono); color: var(--text); }
+
+/* 24h timeline */
+.dojo-timeline-wrap {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 12px 16px;
+}
+.dojo-tl-label  { font-size: .72rem; color: var(--text-sub); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 10px; }
+.dojo-timeline  { position: relative; height: 36px; background: var(--bg-mid); border-radius: 4px; overflow: visible; }
+.dojo-sess-block{
+  position: absolute; top: 0; height: 100%; border-radius: 3px;
+  display: flex; align-items: center; padding-left: 6px;
+  font-size: .68rem; color: var(--text-sub); pointer-events: none; overflow: hidden;
+}
+.dojo-kz-block  { position: absolute; top: 0; height: 100%; pointer-events: none; border-radius: 2px; }
+.dojo-now-line  {
+  position: absolute; top: -6px; bottom: -6px; width: 2px;
+  background: var(--red); border-radius: 2px; z-index: 2;
+}
+.dojo-now-label {
+  position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
+  font-size: .6rem; color: var(--red); font-weight: 700; white-space: nowrap;
+}
+.dojo-hr-tick   {
+  position: absolute; bottom: -18px; transform: translateX(-50%);
+  font-size: .6rem; color: var(--text-dim); font-family: var(--mono);
+}
+
+/* Condition cards */
+.dojo-cards {
+  display: grid; grid-template-columns: repeat(4,1fr); gap: 10px;
+}
+@media (max-width: 900px) { .dojo-cards { grid-template-columns: repeat(2,1fr); } }
+.dojo-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 14px 16px;
+}
+.dojo-card-lbl  { font-size: .7rem; color: var(--text-sub); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+.dojo-card-val  { font-size: .95rem; font-weight: 700; margin-bottom: 4px; }
+.dojo-card-sub  { font-size: .75rem; color: var(--text-sub); line-height: 1.4; }
+.dojo-progress  { height: 5px; background: var(--bg-mid); border-radius: 99px; margin: 8px 0 4px; overflow: hidden; }
+.dojo-progress-fill { height: 100%; border-radius: 99px; transition: width .5s ease; }
+
+/* PD Arrays section */
+.dojo-section {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+}
+.dojo-sec-hdr {
+  font-size: .78rem; font-weight: 600; color: var(--text-sub);
+  text-transform: uppercase; letter-spacing: .05em;
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+}
+.dojo-dino {
+  background: linear-gradient(135deg, rgba(255,77,106,.15), rgba(245,200,66,.15));
+  border: 1px solid var(--red); border-radius: var(--radius-sm);
+  padding: 10px 14px; font-size: .9rem; font-weight: 700;
+  color: var(--red); margin-bottom: 12px;
+  animation: dino-pulse 1.5s ease-in-out infinite;
+}
+@keyframes dino-pulse { 0%,100%{opacity:1} 50%{opacity:.65} }
+.dojo-pd-grid   { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.dojo-pd-col-hdr{ font-size: .75rem; font-weight: 700; margin-bottom: 6px; }
+.dojo-pd-row    { display: flex; align-items: center; gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--border-sub); }
+.dojo-pd-row:last-child { border-bottom: none; }
+.dojo-pd-lbl    { font-size: .78rem; flex: 1; color: var(--text); }
+.dojo-pd-price  { font-size: .78rem; font-family: var(--mono); color: var(--text-sub); }
+
+/* Signals grid */
+.dojo-sig-grid  { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 10px; }
+@media (max-width: 900px) { .dojo-sig-grid { grid-template-columns: 1fr; } }
+.dojo-sig-row   { font-size: .8rem; padding: 4px 0; border-bottom: 1px solid var(--border-sub); line-height: 1.4; }
+.dojo-sig-row:last-child { border-bottom: none; }
+
+/* Killzone countdown */
+.dojo-kz-row    { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; }
+@media (max-width: 700px) { .dojo-kz-row { grid-template-columns: repeat(2,1fr); } }
+.dojo-kz-card   {
+  background: var(--bg-mid); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 10px 12px; text-align: center;
+}
+.dojo-kz-card.kz-card-on { border-color: var(--green); background: var(--green-dim); }
+.dojo-kz-name   { font-size: .72rem; font-weight: 600; margin-bottom: 4px; }
+.dojo-kz-val    { font-size: 1.1rem; font-weight: 700; font-family: var(--mono); color: var(--text); }

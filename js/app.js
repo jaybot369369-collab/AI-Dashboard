@@ -33,6 +33,7 @@ const App = (() => {
     goals:     () => GoalsTab.render(),
     reports:   () => ReportsTab.render(),
     coach:     () => CoachTab.render(),
+    dojo:      () => DojoTab.render(),
   };
 
   /* ══════════════════════════════════════════════════════

@@ -55,6 +55,7 @@ const DB = (() => {
     { id: 'goals',      label: 'Goals',            icon: '🎯', builtin: true },
     { id: 'reports',    label: 'Reports',          icon: '📑', builtin: true },
     { id: 'coach',      label: 'Perf Coach',       icon: '🧠', builtin: true },
+    { id: 'dojo',       label: 'ICT Dojo',         icon: '🥋', builtin: true },
   ];
   function getTabs() {
     return load(KEYS.tabs) || DEFAULT_TABS;
