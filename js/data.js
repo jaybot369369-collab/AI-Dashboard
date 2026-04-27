@@ -142,12 +142,13 @@ const DB = (() => {
              totalPL, winRate, avgR, maxDD };
   }
 
-  /* Daily P&L map: { 'YYYY-MM-DD': number } */
+  /* Daily P&L map: { 'YYYY-MM-DD': number }
+     Multi-day trades (with dateEnd) attribute their P&L to the close date. */
   function dailyPLMap(trades) {
     const map = {};
     trades.forEach(t => {
       if (t.result === undefined || t.result === null || t.result === '') return;
-      const d = (t.date || '').slice(0, 10);
+      const d = (t.dateEnd || t.date || '').slice(0, 10);
       if (!d) return;
       map[d] = (map[d] || 0) + parseFloat(t.result);
     });

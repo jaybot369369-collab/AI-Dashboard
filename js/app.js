@@ -171,7 +171,7 @@ const App = (() => {
       fPreGrade: t.preGrade, fPreGradeNotes: t.preGradeNotes,
       fExitPrice: t.exitPrice, fResult: t.result, fRMultiple: t.rMultiple,
       fPostGrade: t.postGrade, fPostGradeNotes: t.postGradeNotes,
-      fNotes: t.notes, fScreenshotUrl: t.screenshotUrl, fDate: t.date,
+      fNotes: t.notes, fScreenshotUrl: t.screenshotUrl, fDate: t.date, fDateEnd: t.dateEnd || '',
     };
     Object.entries(fields).forEach(([id, val]) => {
       const el = $(id);
@@ -201,7 +201,7 @@ const App = (() => {
       symbol: sym, direction: f('fDirection'),
       entry: f('fEntry'), sl: f('fSl'), tp: f('fTp'), size: f('fSize'),
       session: f('fSession'), htfBias: f('fHtfBias'), setupType,
-      dateEnd: window._jb_pendingEndDate || '',
+      dateEnd: f('fDateEnd') || window._jb_pendingEndDate || '',
       preGrade: f('fPreGrade'), preGradeNotes: f('fPreGradeNotes'),
       exitPrice: f('fExitPrice'), result: f('fResult'), rMultiple,
       postGrade: f('fPostGrade'), postGradeNotes: f('fPostGradeNotes'),

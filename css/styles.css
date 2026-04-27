@@ -1242,17 +1242,26 @@ body.privacy-mode .cal-pnl,
 body.privacy-mode .text-green,
 body.privacy-mode .text-red,
 body.privacy-mode .report-stats .value,
+body.privacy-mode .report-stats .stat-card .value,
+body.privacy-mode .streak-val,
+body.privacy-mode .progress-wrap,
 body.privacy-mode td.text-green,
 body.privacy-mode td.text-red,
 body.privacy-mode .stat-val,
 body.privacy-mode .equity-val,
-body.privacy-mode .privacy-mask {
+body.privacy-mode .privacy-mask,
+body.privacy-mode canvas,
+body.privacy-mode .chip,
+body.privacy-mode .day-trade-row {
   filter: blur(8px);
   transition: filter 120ms ease;
   user-select: none;
 }
 body.privacy-mode .stat-card .value:hover,
-body.privacy-mode .cal-pnl:hover {
+body.privacy-mode .cal-pnl:hover,
+body.privacy-mode .streak-val:hover,
+body.privacy-mode canvas:hover,
+body.privacy-mode .day-trade-row:hover {
   filter: blur(0);
 }
 #privacyToggle.active { color: var(--accent); }
@@ -1262,18 +1271,32 @@ body.privacy-mode .cal-pnl:hover {
 ════════════════════════════════════════════════════════════ */
 .dash-split {
   display: grid;
-  grid-template-columns: 1fr 360px;
+  grid-template-columns: 1fr 1fr;
   gap: 18px;
   align-items: start;
 }
-.dash-split .calendar-wrap { padding: 12px; }
-.dash-split .cal-day { aspect-ratio: 1; min-height: 38px; padding: 4px; }
-.dash-split .cal-day .cal-num { font-size: 0.7rem; }
-.dash-split .cal-day .cal-pnl { font-size: 0.55rem; }
-.dash-split .calendar-nav h3 { font-size: 0.85rem; }
-.cal-day { cursor: pointer; }
+.dash-split .calendar-wrap { padding: 14px; }
+.dash-split .cal-day { aspect-ratio: 1; min-height: 50px; padding: 4px; position: relative; }
+.dash-split .cal-day .cal-num { font-size: 0.78rem; }
+.dash-split .cal-day .cal-pnl { font-size: 0.65rem; }
+.dash-split .calendar-nav h3 { font-size: 0.95rem; }
+.cal-day { cursor: pointer; position: relative; }
 .cal-day.drag-over { outline: 2px solid var(--accent); outline-offset: -2px; }
 .cal-day.range-mid { background: rgba(79,142,247,0.15) !important; }
+
+/* Multi-day trade pill rendered across calendar cells */
+.cal-day .multi-day-pill {
+  position: absolute;
+  bottom: 2px; left: 0; right: 0;
+  height: 4px;
+  background: var(--accent);
+  opacity: 0.85;
+}
+.cal-day.multi-start .multi-day-pill { border-radius: 3px 0 0 3px; left: 25%; }
+.cal-day.multi-end   .multi-day-pill { border-radius: 0 3px 3px 0; right: 25%; }
+.cal-day.multi-start.multi-end .multi-day-pill { border-radius: 3px; left: 25%; right: 25%; }
+.cal-day .multi-day-pill.win  { background: var(--green); }
+.cal-day .multi-day-pill.loss { background: var(--red); }
 
 @media (max-width: 900px) {
   .dash-split { grid-template-columns: 1fr; }

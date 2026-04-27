@@ -126,6 +126,36 @@ const DashboardTab = (() => {
     const first = new Date(calYear, calMonth, 1);
     const last  = new Date(calYear, calMonth + 1, 0);
     const startDay = first.getDay();
+
+    // Pre-compute per-day flags for multi-day trades that intersect this month
+    const allTrades = DB.getTrades();
+    const monthStart = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-01`;
+    const monthEnd   = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
+    const multiDayMap = {}; // date → { start: bool, end: bool, mid: bool, pnl: number }
+    allTrades.forEach(t => {
+      if (!t.dateEnd || t.dateEnd === t.date) return;
+      const a = t.date, b = t.dateEnd;
+      if (b < monthStart || a > monthEnd) return;
+      // Iterate days from max(a, monthStart) to min(b, monthEnd)
+      const startD = a < monthStart ? monthStart : a;
+      const endD   = b > monthEnd   ? monthEnd   : b;
+      let cur = new Date(startD);
+      const finish = new Date(endD);
+      while (cur <= finish) {
+        const ds = cur.toISOString().slice(0, 10);
+        const flags = multiDayMap[ds] || { start: false, end: false, win: false, loss: false };
+        if (ds === a) flags.start = true;
+        if (ds === b) flags.end   = true;
+        const r = parseFloat(t.result);
+        if (!isNaN(r)) {
+          if (r > 0) flags.win = true;
+          else if (r < 0) flags.loss = true;
+        }
+        multiDayMap[ds] = flags;
+        cur.setDate(cur.getDate() + 1);
+      }
+    });
+
     let html = '';
     for (let i = 0; i < startDay; i++) html += `<div class="cal-day empty"></div>`;
     for (let d = 1; d <= last.getDate(); d++) {
@@ -133,10 +163,14 @@ const DashboardTab = (() => {
       const pnl     = dlMap[dateStr];
       const cls     = calClass(pnl);
       const isToday = dateStr === today ? ' today' : '';
-      html += `<div class="cal-day ${cls}${isToday}" data-date="${dateStr}"
-                    title="${dateStr}${pnl !== undefined ? ': ' + fmt$(pnl) : ''}">
+      const md      = multiDayMap[dateStr];
+      const mdCls   = md ? ` ${md.start ? 'multi-start' : ''} ${md.end ? 'multi-end' : ''}` : '';
+      const pillCls = md ? (md.win && !md.loss ? 'win' : md.loss && !md.win ? 'loss' : '') : '';
+      html += `<div class="cal-day ${cls}${isToday}${mdCls}" data-date="${dateStr}"
+                    title="${dateStr}${pnl !== undefined ? ': ' + fmt$(pnl) : ''}${md ? ' · multi-day position' : ''}">
         <span class="cal-num">${d}</span>
         ${pnl !== undefined ? `<span class="cal-pnl">${pnl >= 0 ? '+' : ''}${Math.abs(pnl) >= 1000 ? (pnl / 1000).toFixed(1) + 'k' : pnl.toFixed(0)}</span>` : ''}
+        ${md ? `<div class="multi-day-pill ${pillCls}"></div>` : ''}
       </div>`;
     }
     grid.innerHTML = html;
@@ -168,10 +202,10 @@ const DashboardTab = (() => {
           const [d1, d2] = [startDate, endDate].sort();
           App.openTradeModal();
           setTimeout(() => {
-            const fDate = document.getElementById('fDate');
-            if (fDate) fDate.value = d1;
-            // Stash end date on form for save handler to pick up
-            window._jb_pendingEndDate = d2;
+            const fDate    = document.getElementById('fDate');
+            const fDateEnd = document.getElementById('fDateEnd');
+            if (fDate)    fDate.value    = d1;
+            if (fDateEnd) fDateEnd.value = d2;
             App.toast(`New multi-day trade: ${d1} → ${d2}`);
           }, 100);
         }
