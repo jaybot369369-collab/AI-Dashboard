@@ -8,8 +8,8 @@ const DojoTab = (() => {
   /* ── Constants ──────────────────────────────────────── */
   const PROTECTED = ['BTCUSDT', 'ETHUSDT', 'XRPUSDT'];
   const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const TFS  = ['1h', '4h', '1d', '1w'];
-  const TF_LABEL = { '1h':'1H', '4h':'4H', '1d':'1D', '1w':'1W' };
+  const TFS  = ['15m', '1h', '4h', '1d', '1w'];
+  const TF_LABEL = { '15m':'15m', '1h':'1H', '4h':'4H', '1d':'1D', '1w':'1W' };
 
   /* ── State ──────────────────────────────────────────── */
   let _pair        = 'BTCUSDT';
@@ -611,7 +611,8 @@ const DojoTab = (() => {
     if (!c4.length) return null;
 
     // Pick "primary" candle set based on user's TF toggle — drives Trend, Structure, P/D, Volatility
-    const primaryMap = { '1h': c1, '4h': c4, '1d': c1d, '1w': c1w };
+    const c15m = _candles['15m'] || [];
+    const primaryMap = { '15m': c15m, '1h': c1, '4h': c4, '1d': c1d, '1w': c1w };
     const primary = (primaryMap[_tf] && primaryMap[_tf].length) ? primaryMap[_tf] : c4;
 
     const pd = allPD();
