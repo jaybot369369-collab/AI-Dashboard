@@ -8,9 +8,12 @@ const DojoTab = (() => {
   /* ── Constants ──────────────────────────────────────── */
   const PROTECTED = ['BTCUSDT', 'ETHUSDT', 'XRPUSDT'];
   const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const TFS  = ['1h', '4h', '1d', '1w'];
+  const TF_LABEL = { '1h':'1H', '4h':'4H', '1d':'1D', '1w':'1W' };
 
   /* ── State ──────────────────────────────────────────── */
   let _pair        = 'BTCUSDT';
+  let _tf          = localStorage.getItem('jb_dojo_tf') || '4h';
   let _customPairs = JSON.parse(localStorage.getItem('jb_dojo_pairs') || 'null') || [...PROTECTED];
   let _candles     = {};
   let _ticker      = null;
@@ -112,14 +115,15 @@ const DojoTab = (() => {
     _fetchErr = null;
     updateStatus('Fetching…');
     try {
-      const [c4h, c1h, c15m, c1d, tick] = await Promise.all([
+      const [c4h, c1h, c15m, c1d, c1w, tick] = await Promise.all([
         fetchCandles(_pair, '4h', 100),
         fetchCandles(_pair, '1h', 100),
         fetchCandles(_pair, '15m', 100),
         fetchCandles(_pair, '1d', 90),
+        fetchCandles(_pair, '1w', 60),
         fetchTicker(_pair),
       ]);
-      _candles = { '4h': c4h, '1h': c1h, '15m': c15m, '1d': c1d };
+      _candles = { '4h': c4h, '1h': c1h, '15m': c15m, '1d': c1d, '1w': c1w };
       _ticker  = tick;
       _lastFetch = Date.now();
       _signals = runAnalysis();
@@ -375,8 +379,9 @@ const DojoTab = (() => {
 
   function detectFormations() {
     const c4 = _candles['4h']||[], c1 = _candles['1h']||[], c15 = _candles['15m']||[];
+    const c1d = _candles['1d']||[], c1w = _candles['1w']||[];
     const sigs = [];
-    [['4H',c4],['1H',c1],['15m',c15]].forEach(([tf,cc]) => { if(cc.length>20) sigs.push(...detectRSIDiv(cc,tf)); });
+    [['4H',c4],['1H',c1],['15m',c15],['1D',c1d],['1W',c1w]].forEach(([tf,cc]) => { if(cc.length>20) sigs.push(...detectRSIDiv(cc,tf)); });
     const eq4 = findEQ(c4.slice(-60));
     [c4.at(-1), c1.at(-1)].filter(Boolean).forEach((c, i) => {
       const tf = i === 0 ? '4H' : '1H';
@@ -562,19 +567,27 @@ const DojoTab = (() => {
     const c4  = _candles['4h']  || [];
     const c1  = _candles['1h']  || [];
     const c1d = _candles['1d']  || [];
+    const c1w = _candles['1w']  || [];
     if (!c4.length) return null;
+
+    // Pick "primary" candle set based on user's TF toggle — drives Trend, Structure, P/D, Volatility
+    const primaryMap = { '1h': c1, '4h': c4, '1d': c1d, '1w': c1w };
+    const primary = (primaryMap[_tf] && primaryMap[_tf].length) ? primaryMap[_tf] : c4;
+
     const pd = allPD();
     const formations = detectFormations();
     const enriched = formations.map(f => ({ ...f, meta: SIG_META[f.type] || null, tier: tierFor(f, formations) }));
     const conf = detectConfluence(pd);
     return {
-      // core
-      trend:      detectTrend(c4),
-      premDisc:   detectPremDisc(c4),
-      structure:  detectStructure(c1.length ? c1 : c4),
+      // active analysis TF
+      tf: _tf,
+      // core (driven by selected TF)
+      trend:      detectTrend(primary),
+      premDisc:   detectPremDisc(primary),
+      structure:  detectStructure(primary),
       amd:        detectAMD(),
       // extended
-      volatility: detectVolatility(c4),
+      volatility: detectVolatility(primary),
       dailyRange: detectDailyRange(c1, c1d),
       pdhPdl:     detectPDHPDL(c1),
       weeklyOpen: detectWeeklyOpen(c4),
@@ -636,13 +649,14 @@ const DojoTab = (() => {
 
   /* ── Core conditions (4 cards) ──────────────────────── */
   function renderCoreCards(s) {
+    const tfTag = `<span class="dojo-tf-tag">${TF_LABEL[s.tf]}</span>`;
     return `<div class="dojo-cards">
       <div class="dojo-card">
-        <div class="dojo-card-lbl">Market Condition</div>
+        <div class="dojo-card-lbl">Market Condition ${tfTag}</div>
         <div class="dojo-card-val" style="color:${s.trend.color}">${s.trend.icon} ${s.trend.label}</div>
       </div>
       <div class="dojo-card">
-        <div class="dojo-card-lbl">Premium / Discount</div>
+        <div class="dojo-card-lbl">Premium / Discount ${tfTag}</div>
         <div class="dojo-card-val" style="color:${s.premDisc.color}">${s.premDisc.zone}</div>
         <div class="dojo-progress"><div class="dojo-progress-fill" style="width:${s.premDisc.pct.toFixed(0)}%;background:${s.premDisc.color}"></div></div>
         <div class="dojo-card-sub">${s.premDisc.pct.toFixed(0)}% of range · EQ: ${fmtP(s.premDisc.mid)}</div>
@@ -653,7 +667,7 @@ const DojoTab = (() => {
         <div class="dojo-card-sub">${s.amd.desc}</div>
       </div>
       <div class="dojo-card">
-        <div class="dojo-card-lbl">Market Structure</div>
+        <div class="dojo-card-lbl">Market Structure ${tfTag}</div>
         <div class="dojo-card-val" style="color:${s.structure.color}">${s.structure.label}</div>
       </div>
     </div>`;
@@ -678,7 +692,7 @@ const DojoTab = (() => {
 
     return `<div class="dojo-sec-hdr" style="margin-top:18px">Extended Conditions</div>
     <div class="dojo-cards dojo-cards-6">
-      ${card('Volatility (ATR)',     s.volatility.label, s.volatility.desc, s.volatility.color)}
+      ${card(`Volatility (${TF_LABEL[s.tf]} ATR)`, s.volatility.label, s.volatility.desc, s.volatility.color)}
       ${card('Daily Range Used',     s.dailyRange.label, s.dailyRange.desc, s.dailyRange.color)}
       ${card('Previous Day H/L',     pdhl ? pdhl.status : '—', pdhSub, pdhl ? pdhl.color : 'var(--text-sub)')}
       ${card('Weekly Open Bias',     wo ? wo.label : '—', woSub, wo ? wo.color : 'var(--text-sub)')}
@@ -884,6 +898,14 @@ const DojoTab = (() => {
       <div id="dojoClocks">${renderClocks()}</div>
       ${renderTimeline()}
 
+      <div class="dojo-tf-bar">
+        <span class="dojo-tf-label">Analysis Timeframe:</span>
+        <div class="dojo-tf-tabs">
+          ${TFS.map(tf => `<button class="dojo-tf-btn${_tf===tf?' active':''}" data-tf="${tf}" onclick="DojoTab._setTF('${tf}')">${TF_LABEL[tf]}</button>`).join('')}
+        </div>
+        <span class="text-dim" style="font-size:.75rem;margin-left:auto">Drives Trend, Structure, P/D, Volatility ↓</span>
+      </div>
+
       <div id="dojoBody" style="margin-top:16px">
         <div class="loading-state">Fetching live data from Binance…</div>
       </div>
@@ -921,6 +943,20 @@ const DojoTab = (() => {
       savePairs();
       if (_pair === sym) _pair = PROTECTED[0];
       render();
+    },
+    _setTF: tf => {
+      if (_tf === tf || !TFS.includes(tf)) return;
+      _tf = tf;
+      localStorage.setItem('jb_dojo_tf', tf);
+      // Toggle active button without full re-render
+      document.querySelectorAll('.dojo-tf-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tf === tf);
+      });
+      // Re-run analysis with new primary TF (no re-fetch needed — we have all candles)
+      if (_candles['4h'] && _candles['4h'].length) {
+        _signals = runAnalysis();
+        updateBody();
+      }
     },
   };
 

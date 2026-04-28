@@ -1613,3 +1613,33 @@ input.date-picker::-webkit-calendar-picker-indicator {
 }
 .dojo-tier-a { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
 .dojo-tier-b { background: var(--gold-dim);  color: var(--gold);  border: 1px solid var(--gold); }
+
+/* TF toggle bar */
+.dojo-tf-bar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 16px;
+  margin-top: 6px;
+}
+.dojo-tf-label { font-size: .8rem; color: var(--text-sub); font-weight: 600; }
+.dojo-tf-tabs  { display: flex; gap: 4px; }
+.dojo-tf-btn {
+  padding: 6px 16px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--bg-mid);
+  color: var(--text-sub); font-size: .82rem; font-weight: 600;
+  cursor: pointer; transition: all var(--transition);
+  font-family: var(--mono);
+}
+.dojo-tf-btn:hover { color: var(--text); border-color: var(--accent); }
+.dojo-tf-btn.active {
+  background: var(--accent-dim); border-color: var(--accent);
+  color: var(--accent); box-shadow: 0 0 8px rgba(79,142,247,.2);
+}
+.dojo-tf-tag {
+  display: inline-block; margin-left: 4px;
+  padding: 1px 6px; border-radius: 4px;
+  background: var(--accent-dim); color: var(--accent);
+  font-size: .62rem; font-weight: 700; font-family: var(--mono);
+  letter-spacing: .03em;
+  vertical-align: middle;
+}
