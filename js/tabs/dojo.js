@@ -652,10 +652,9 @@ const DojoTab = (() => {
     const kz = kzStatus();
     const activeKZ = kz.find(k => k.active);
     return `<div class="dojo-clocks">
-      ${ct.map(c => `<div class="dojo-clock-card"><span class="dojo-flag">${c.flag}</span><span class="dojo-clk-label">${c.label}</span><span class="dojo-clk-time">${c.time}</span></div>`).join('')}
+      ${ct.map(c => `<div class="dojo-clock-card"><div class="dojo-clk-top"><span class="dojo-flag">${c.flag}</span><span class="dojo-clk-label">${c.label}</span></div><span class="dojo-clk-time">${c.time}</span></div>`).join('')}
       <div class="dojo-clock-card${activeKZ?' kz-lit':''}">
-        <span class="dojo-flag">⚡</span>
-        <span class="dojo-clk-label">Killzone</span>
+        <div class="dojo-clk-top"><span class="dojo-flag">⚡</span><span class="dojo-clk-label">Killzone</span></div>
         <span class="dojo-clk-time" style="color:${activeKZ?'var(--green)':'var(--text-sub)'};font-size:.85rem">${activeKZ ? activeKZ.name : 'Off-hours'}</span>
       </div>
     </div>`;
@@ -1046,10 +1045,10 @@ ${s.formations.slice(0, 5).map(f => `  · [${f.tier}] ${f.type}  (${f.tf})  ${f.
     }
     el.innerHTML =
       renderCoreCards(_signals) +
-      renderExtendedCards(_signals) +
       renderPD(_signals) +
       renderFormationsTable(_signals) +
-      renderTimesAndSweeps(_signals);
+      renderTimesAndSweeps(_signals) +
+      renderExtendedCards(_signals);
 
     // 🦖 Dinosaur alert side-effects (sound + browser notification)
     maybeFireDino(_signals.confluence, _signals);

@@ -1429,7 +1429,8 @@ input.date-picker::-webkit-calendar-picker-indicator {
   display: flex; flex-direction: column; gap: 3px;
 }
 .dojo-clock-card.kz-lit { border-color: var(--green); box-shadow: 0 0 10px rgba(0,200,150,.2); }
-.dojo-flag      { font-size: 1.2rem; }
+.dojo-clk-top   { display: flex; align-items: center; gap: 5px; }
+.dojo-flag      { font-size: 1.1rem; line-height: 1; }
 .dojo-clk-label { font-size: .72rem; color: var(--text-sub); text-transform: uppercase; letter-spacing: .04em; }
 .dojo-clk-time  { font-size: .88rem; font-weight: 600; font-family: var(--mono); color: var(--text); }
 
