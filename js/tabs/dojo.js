@@ -15,6 +15,7 @@ const DojoTab = (() => {
   let _pair        = 'BTCUSDT';
   let _tf          = localStorage.getItem('jb_dojo_tf') || '4h';
   let _customPairs = JSON.parse(localStorage.getItem('jb_dojo_pairs') || 'null') || [...PROTECTED];
+  let _panels      = JSON.parse(localStorage.getItem('jb_dojo_panels') || '{"pdDetails":true}'); // {id: collapsed-bool}; PD details closed by default
   let _candles     = {};
   let _ticker      = null;
   let _signals     = null;
@@ -22,8 +23,12 @@ const DojoTab = (() => {
   let _clockTimer  = null;
   let _lastFetch   = null;
   let _fetchErr    = null;
+  let _lastDinoFire= 0;
+  let _dinoArmed   = true;  // toggled off after firing, re-armed when confluence drops
 
-  function savePairs() { localStorage.setItem('jb_dojo_pairs', JSON.stringify(_customPairs)); }
+  function savePairs()  { localStorage.setItem('jb_dojo_pairs', JSON.stringify(_customPairs)); }
+  function savePanels() { localStorage.setItem('jb_dojo_panels', JSON.stringify(_panels)); }
+  function isCollapsed(id) { return _panels[id] === true; }
 
   /* ── Utils ──────────────────────────────────────────── */
   const dp = s => s && s.includes('BTC') ? 2 : 4;
@@ -43,17 +48,43 @@ const DojoTab = (() => {
     ];
   }
 
-  const KZS = [
-    { name: 'Asian KZ',    start: 20,   end: 0,    color: 'var(--teal)' },
-    { name: 'London Open', start: 7,    end: 9.5,  color: 'var(--accent)' },
-    { name: 'NY Open',     start: 13.5, end: 16,   color: 'var(--orange)' },
-    { name: 'NY PM',       start: 19,   end: 20,   color: 'var(--gold)' },
+  // Killzones defined in NEW YORK local time (the canonical ICT reference frame).
+  // These auto-convert to UTC at runtime, handling EST↔EDT (DST) transitions.
+  const KZS_NY = [
+    { name: 'Asian KZ',         startNY: 20, endNY: 24, color: 'var(--teal)'   },
+    { name: 'London Open KZ',   startNY: 2,  endNY: 5,  color: 'var(--accent)' },
+    { name: 'NY Open KZ',       startNY: 7,  endNY: 10, color: 'var(--orange)' },
+    { name: 'London Close KZ',  startNY: 10, endNY: 12, color: 'var(--gold)'   },
   ];
+
+  // Returns NY UTC offset in hours (e.g. -4 for EDT, -5 for EST)
+  function nyOffsetHours() {
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York', timeZoneName: 'longOffset'
+      }).formatToParts(new Date());
+      const tz = parts.find(p => p.type === 'timeZoneName').value;
+      const m = tz.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+      if (!m) return -5;
+      const sign = m[1] === '+' ? 1 : -1;
+      return sign * (parseInt(m[2]) + (parseInt(m[3] || '0') / 60));
+    } catch { return -5; }
+  }
+
+  // Converts NY-local killzones into UTC bounds for current DST state
+  function KZS() {
+    const off = nyOffsetHours(); // -4 EDT, -5 EST
+    return KZS_NY.map(kz => ({
+      ...kz,
+      start: ((kz.startNY - off) + 24) % 24,
+      end:   ((kz.endNY   - off) + 24) % 24,
+    }));
+  }
 
   function kzStatus() {
     const now = new Date();
     const h = now.getUTCHours() + now.getUTCMinutes() / 60;
-    return KZS.map(kz => {
+    return KZS().map(kz => {
       const active = kz.start > kz.end ? (h >= kz.start || h < kz.end) : (h >= kz.start && h < kz.end);
       let minsTo = 0;
       if (!active) {
@@ -555,8 +586,17 @@ const DojoTab = (() => {
     });
     const hours = Object.entries(hmap).filter(([,v])=>v.total>=3)
       .map(([h,v])=>({ h:+h, wr:v.wins/v.total, n:v.total })).sort((a,b)=>b.wr-a.wr);
-    const nowH = new Date().getUTCHours() + new Date().getUTCMinutes()/60;
-    const ict  = (nowH>=7&&nowH<9.5)||(nowH>=13.5&&nowH<16) ? 'good' : (nowH>=2&&nowH<7)||(nowH>=16&&nowH<19) ? 'avoid' : 'neutral';
+    // ICT rating from current killzone status (NY-local-aware)
+    const inKZ = kzStatus().some(k => k.active && (k.name === 'London Open KZ' || k.name === 'NY Open KZ'));
+    const inOffHours = (() => {
+      // 'avoid' window = 03:00–06:00 NY (between Asian close and London open) and 12:30–15:30 NY (NY lunch)
+      const nyParts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour12: false, hour: '2-digit', minute: '2-digit' }).formatToParts(new Date());
+      const nyH = parseInt(nyParts.find(p => p.type === 'hour').value);
+      const nyM = parseInt(nyParts.find(p => p.type === 'minute').value);
+      const h = nyH + nyM/60;
+      return (h >= 3 && h < 6) || (h >= 12.5 && h < 15.5);
+    })();
+    const ict = inKZ ? 'good' : inOffHours ? 'avoid' : 'neutral';
     return { best:hours.slice(0,2), worst:hours.slice(-2).reverse(), ict };
   }
 
@@ -625,21 +665,43 @@ const DojoTab = (() => {
     const h = now.getUTCHours() + now.getUTCMinutes()/60;
     const pct = v => (v/24*100).toFixed(2)+'%';
     const wid = (s,e) => ((e>s?e-s:24-s+e)/24*100).toFixed(2)+'%';
+
+    // Sessions in NY-local terms, converted to UTC dynamically
+    const off = nyOffsetHours();
+    const ny2utc = nyH => ((nyH - off) + 24) % 24;
+    // Tokyo session 19:00-04:00 NY (overlaps midnight); London 03:00-12:00 NY; NY 08:00-17:00 NY
     const sessions = [
-      { name:'Tokyo',  s:0,    e:9,   bg:'rgba(0,212,200,.18)',  bd:'var(--teal)' },
-      { name:'London', s:7,    e:16,  bg:'rgba(79,142,247,.18)', bd:'var(--accent)' },
-      { name:'NY',     s:13.5, e:21,  bg:'rgba(255,140,66,.18)', bd:'var(--orange)' },
+      { name:'Tokyo',  sNY:19, eNY:28,  bg:'rgba(0,212,200,.18)',  bd:'var(--teal)' },     // wraps midnight
+      { name:'London', sNY:3,  eNY:12,  bg:'rgba(79,142,247,.18)', bd:'var(--accent)' },
+      { name:'NY',     sNY:8,  eNY:17,  bg:'rgba(255,140,66,.18)', bd:'var(--orange)' },
     ];
-    const kzBlocks = [
-      { s:20, e:24, bg:'rgba(0,212,200,.45)' },
-      { s:7,  e:9.5,  bg:'rgba(79,142,247,.5)' },
-      { s:13.5,e:16,  bg:'rgba(255,140,66,.5)' },
-      { s:19, e:20, bg:'rgba(245,200,66,.5)' },
-    ];
+
+    const sessionBlocks = sessions.map(s => {
+      const su = ny2utc(s.sNY), eu = ny2utc(s.eNY % 24);
+      // Handle wrap (e.g. Tokyo crosses midnight)
+      if (s.eNY > 24 || eu < su) {
+        return [
+          { name:s.name, s:su, e:24,  bg:s.bg, bd:s.bd },
+          { name:s.name, s:0,  e:eu, bg:s.bg, bd:s.bd },
+        ];
+      }
+      return [{ name:s.name, s:su, e:eu, bg:s.bg, bd:s.bd }];
+    }).flat();
+
+    // Killzones (already UTC-converted via KZS())
+    const kzColorMap = { 'Asian KZ':'rgba(0,212,200,.45)', 'London Open KZ':'rgba(79,142,247,.5)', 'NY Open KZ':'rgba(255,140,66,.5)', 'London Close KZ':'rgba(245,200,66,.5)' };
+    const kzBlocks = KZS().map(kz => {
+      if (kz.start < kz.end) return [{ s:kz.start, e:kz.end, bg:kzColorMap[kz.name] }];
+      return [
+        { s:kz.start, e:24,     bg:kzColorMap[kz.name] },
+        { s:0,        e:kz.end, bg:kzColorMap[kz.name] },
+      ];
+    }).flat().filter(b => b.e > b.s);
+
     return `<div class="dojo-timeline-wrap">
-      <div class="dojo-tl-label">24h UTC Session Map</div>
+      <div class="dojo-tl-label">24h UTC Session Map · NY offset ${off>=0?'+':''}${off}h</div>
       <div class="dojo-timeline">
-        ${sessions.map(s=>`<div class="dojo-sess-block" style="left:${pct(s.s)};width:${wid(s.s,s.e)};background:${s.bg};border-top:2px solid ${s.bd}" title="${s.name} ${s.s}:00–${s.e}:00 UTC"><span>${s.name}</span></div>`).join('')}
+        ${sessionBlocks.map(s=>`<div class="dojo-sess-block" style="left:${pct(s.s)};width:${wid(s.s,s.e)};background:${s.bg};border-top:2px solid ${s.bd}" title="${s.name}"><span>${s.name}</span></div>`).join('')}
         ${kzBlocks.map(k=>`<div class="dojo-kz-block" style="left:${pct(k.s)};width:${wid(k.s,k.e)};background:${k.bg}"></div>`).join('')}
         <div class="dojo-now-line" style="left:${pct(h)}"><span class="dojo-now-label">NOW</span></div>
         ${[0,3,6,9,12,15,18,21].map(t=>`<span class="dojo-hr-tick" style="left:${pct(t)}">${String(t).padStart(2,'0')}</span>`).join('')}
@@ -650,7 +712,11 @@ const DojoTab = (() => {
   /* ── Core conditions (4 cards) ──────────────────────── */
   function renderCoreCards(s) {
     const tfTag = `<span class="dojo-tf-tag">${TF_LABEL[s.tf]}</span>`;
-    return `<div class="dojo-cards">
+    const closed = isCollapsed('core');
+    return `<div class="dojo-section" data-panel="core">
+      <div class="dojo-sec-hdr"><span>Core Conditions</span>${panelToggle('core','core conditions')}</div>
+      <div class="${closed?'panel-hidden':''}">
+      <div class="dojo-cards">
       <div class="dojo-card">
         <div class="dojo-card-lbl">Market Condition ${tfTag}</div>
         <div class="dojo-card-val" style="color:${s.trend.color}">${s.trend.icon} ${s.trend.label}</div>
@@ -670,11 +736,12 @@ const DojoTab = (() => {
         <div class="dojo-card-lbl">Market Structure ${tfTag}</div>
         <div class="dojo-card-val" style="color:${s.structure.color}">${s.structure.label}</div>
       </div>
-    </div>`;
+    </div></div></div>`;
   }
 
   /* ── Extended conditions (6 cards) ──────────────────── */
   function renderExtendedCards(s) {
+    const closed = isCollapsed('extended');
     const card = (lbl, val, sub, color) =>
       `<div class="dojo-card">
         <div class="dojo-card-lbl">${lbl}</div>
@@ -690,24 +757,128 @@ const DojoTab = (() => {
     const arSub= ar ? `Asia Hi ${fmtP(ar.aHi)} · Lo ${fmtP(ar.aLo)}` : '';
     const seas = s.seasonality;
 
-    return `<div class="dojo-sec-hdr" style="margin-top:18px">Extended Conditions</div>
-    <div class="dojo-cards dojo-cards-6">
-      ${card(`Volatility (${TF_LABEL[s.tf]} ATR)`, s.volatility.label, s.volatility.desc, s.volatility.color)}
-      ${card('Daily Range Used',     s.dailyRange.label, s.dailyRange.desc, s.dailyRange.color)}
-      ${card('Previous Day H/L',     pdhl ? pdhl.status : '—', pdhSub, pdhl ? pdhl.color : 'var(--text-sub)')}
-      ${card('Weekly Open Bias',     wo ? wo.label : '—', woSub, wo ? wo.color : 'var(--text-sub)')}
-      ${card('Day-of-Week Bias',     seas ? seas.label : '—', seas ? seas.desc : '', seas ? seas.color : 'var(--text-sub)')}
-      ${card('Asian Range',          ar ? ar.status : '—', arSub, ar ? ar.color : 'var(--text-sub)')}
+    return `<div class="dojo-section" data-panel="extended" style="margin-top:18px">
+      <div class="dojo-sec-hdr"><span>Extended Conditions</span>${panelToggle('extended','extended conditions')}</div>
+      <div class="${closed?'panel-hidden':''}">
+        <div class="dojo-cards dojo-cards-6">
+          ${card(`Volatility (${TF_LABEL[s.tf]} ATR)`, s.volatility.label, s.volatility.desc, s.volatility.color)}
+          ${card('Daily Range Used',     s.dailyRange.label, s.dailyRange.desc, s.dailyRange.color)}
+          ${card('Previous Day H/L',     pdhl ? pdhl.status : '—', pdhSub, pdhl ? pdhl.color : 'var(--text-sub)')}
+          ${card('Weekly Open Bias',     wo ? wo.label : '—', woSub, wo ? wo.color : 'var(--text-sub)')}
+          ${card('Day-of-Week Bias',     seas ? seas.label : '—', seas ? seas.desc : '', seas ? seas.color : 'var(--text-sub)')}
+          ${card('Asian Range',          ar ? ar.status : '—', arSub, ar ? ar.color : 'var(--text-sub)')}
+        </div>
+      </div>
     </div>`;
   }
 
-  /* ── PD Arrays with direction badge ─────────────────── */
+  /* ── Generic panel collapse helpers ────────────────── */
+  function panelToggle(panelId, label) {
+    const closed = isCollapsed(panelId);
+    return `<button class="panel-toggle" onclick="DojoTab._togglePanel('${panelId}')" title="${closed?'Show':'Hide'} ${label}">${closed?'▶':'▼'}</button>`;
+  }
+
+  /* ── Email link generator for dinosaur fire ─────────── */
+  function buildSetupEmail(s) {
+    const cur = parseFloat(_ticker?.lastPrice || 0);
+    const dir = s.pdDir.label.includes('BULL') ? 'Long' : s.pdDir.label.includes('BEAR') ? 'Short' : 'Neutral';
+    const bulls = s.pdArrays.filter(p => p.dir === 'bull');
+    const bears = s.pdArrays.filter(p => p.dir === 'bear');
+    let stop = cur;
+    if (dir === 'Long' && bulls.length)       stop = Math.min(...bulls.map(p => p.bot)) * 0.998;
+    else if (dir === 'Short' && bears.length) stop = Math.max(...bears.map(p => p.top)) * 1.002;
+    const risk = Math.abs(cur - stop) || cur * 0.005;
+    const tp1 = dir === 'Long' ? cur + risk     : cur - risk;
+    const tp2 = dir === 'Long' ? cur + 2 * risk : cur - 2 * risk;
+    const tp3 = dir === 'Long' ? cur + 3 * risk : cur - 3 * risk;
+    const topSig = s.formations.find(f => f.tier === 'A') || s.formations[0];
+    const grade  = topSig?.tier || 'B';
+    const hold   = topSig?.meta?.holdTime || 'Variable';
+    const fmt    = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: dp(_pair), maximumFractionDigits: dp(_pair) });
+
+    const subj = `🦖 ${_pair} Confluence Alert — ${s.pdDir.label}`;
+    const body =
+`🦖 PD Array Confluence Alert — ${_pair}
+${new Date().toUTCString()}
+
+DIRECTION:    ${dir}
+GRADE:        ${grade}
+HOLD TIME:    ${hold}
+CONFLUENCE:   ${s.confluence.bulls}↑ bull · ${s.confluence.bears}↓ bear arrays near price
+
+SUGGESTED SETUP
+  Entry:      ${fmt(cur)}
+  Stop:       ${fmt(stop)}  (${(risk/cur*100).toFixed(2)}% risk)
+  TP1 (1R):   ${fmt(tp1)}
+  TP2 (2R):   ${fmt(tp2)}
+  TP3 (3R):   ${fmt(tp3)}
+
+CURRENT CONDITIONS
+  Trend:      ${s.trend.label}
+  P/D:        ${s.premDisc.zone} (${s.premDisc.pct.toFixed(0)}%)
+  Structure:  ${s.structure.label}
+  AMD Phase:  ${s.amd.phase}
+  Volatility: ${s.volatility.label}
+  Day Bias:   ${s.seasonality ? s.seasonality.label : '—'}
+
+PD ARRAYS NEAR PRICE
+${s.pdArrays.slice(0, 10).map(p => `  · ${p.tf}  ${p.label}  @  ${fmt((p.top+p.bot)/2)}`).join('\n')}
+
+TOP FORMATION SIGNALS
+${s.formations.slice(0, 5).map(f => `  · [${f.tier}] ${f.type}  (${f.tf})  ${f.desc}`).join('\n')}
+
+— Generated by AI Dashboard ICT Dojo`;
+
+    return `mailto:jamalpeace@live.co.uk?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+  }
+
+  /* ── Dinosaur beep (Web Audio — no file needed) ─────── */
+  function playDinoBeep() {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      const tones = [880, 1320, 1760]; // A5, E6, A6
+      tones.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.value = 0.0001;
+        osc.connect(gain); gain.connect(ctx.destination);
+        const start = ctx.currentTime + i * 0.16;
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.18, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.15);
+        osc.start(start); osc.stop(start + 0.15);
+      });
+      setTimeout(() => ctx.close(), 1000);
+    } catch (e) { console.warn('Beep failed:', e); }
+  }
+
+  function maybeFireDino(conf, signals) {
+    if (!conf || !conf.dino) {
+      if (!conf || !conf.dino) _dinoArmed = true; // re-arm when confluence drops
+      return;
+    }
+    if (!_dinoArmed) return;
+    // fired in last 10 minutes? skip
+    if (Date.now() - _lastDinoFire < 10 * 60 * 1000) return;
+    _lastDinoFire = Date.now();
+    _dinoArmed = false;
+    playDinoBeep();
+    // Browser notification (if user previously allowed)
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      try { new Notification(`🦖 ${_pair} confluence — ${signals.pdDir.label}`, { body: 'Open ICT Dojo for full setup' }); } catch {}
+    }
+  }
+
+  /* ── PD Arrays section (collapsible details) ─────────── */
   function renderPD(s) {
     const conf = s.confluence;
     const dir  = s.pdDir;
     const bulls = s.pdArrays.filter(p=>p.dir==='bull');
     const bears = s.pdArrays.filter(p=>p.dir==='bear');
-    const dino  = conf.dino ? `<div class="dojo-dino">🦖 ${conf.total}+ PD ARRAY CONFLUENCE — High probability area!</div>` : '';
     const row = p => `<div class="dojo-pd-row"><span class="badge badge-dim" style="font-size:.6rem">${p.tf}</span><span class="dojo-pd-lbl">${p.label}</span><span class="dojo-pd-price">${fmtP((p.top+p.bot)/2)}</span></div>`;
 
     const dirClass = dir.label === 'BULL DOMINANT' ? 'dir-bull'
@@ -715,8 +886,17 @@ const DojoTab = (() => {
                    : dir.label === 'NEUTRAL'       ? 'dir-neutral'
                    : 'dir-unsure';
 
-    return `<div class="dojo-section">
-      <div class="dojo-sec-hdr">Active PD Arrays <span class="badge badge-dim" style="font-size:.65rem">${conf.bulls}↑ bull · ${conf.bears}↓ bear near price</span></div>
+    const dino = conf.dino ? `
+      <div class="dojo-dino">
+        <div style="flex:1">🦖 ${conf.total}+ PD ARRAY CONFLUENCE — High probability area!</div>
+        <a href="${buildSetupEmail(s)}" class="btn-primary btn-sm dino-email-btn" target="_blank">📧 Email Setup</a>
+      </div>` : '';
+
+    const detailsClosed = isCollapsed('pdDetails');
+    return `<div class="dojo-section" data-panel="pd">
+      <div class="dojo-sec-hdr">
+        <span>Active PD Arrays <span class="badge badge-dim" style="font-size:.65rem">${conf.bulls}↑ bull · ${conf.bears}↓ bear near price</span></span>
+      </div>
       <div class="dojo-dir-badge ${dirClass}">
         <div class="dojo-dir-icon">${dir.icon}</div>
         <div class="dojo-dir-text">
@@ -725,19 +905,25 @@ const DojoTab = (() => {
         </div>
       </div>
       ${dino}
-      <div class="dojo-pd-grid">
-        <div class="dojo-pd-col"><div class="dojo-pd-col-hdr" style="color:var(--green)">▲ Bullish</div>${bulls.length?bulls.map(row).join(''):'<p class="text-dim" style="font-size:.8rem;padding:8px 0">None nearby</p>'}</div>
-        <div class="dojo-pd-col"><div class="dojo-pd-col-hdr" style="color:var(--red)">▼ Bearish</div>${bears.length?bears.map(row).join(''):'<p class="text-dim" style="font-size:.8rem;padding:8px 0">None nearby</p>'}</div>
+      <div class="dojo-pd-details-toggle">
+        <button class="btn-ghost btn-sm" onclick="DojoTab._togglePanel('pdDetails')">
+          ${detailsClosed ? '▶ Show PD array details' : '▼ Hide PD array details'}
+        </button>
+      </div>
+      <div class="dojo-pd-grid${detailsClosed?' panel-hidden':''}">
+        <div class="dojo-pd-col"><div class="dojo-pd-col-hdr" style="color:var(--green)">▲ Bullish (${bulls.length})</div>${bulls.length?bulls.map(row).join(''):'<p class="text-dim" style="font-size:.8rem;padding:8px 0">None nearby</p>'}</div>
+        <div class="dojo-pd-col"><div class="dojo-pd-col-hdr" style="color:var(--red)">▼ Bearish (${bears.length})</div>${bears.length?bears.map(row).join(''):'<p class="text-dim" style="font-size:.8rem;padding:8px 0">None nearby</p>'}</div>
       </div>
     </div>`;
   }
 
   /* ── Rich Formation Signals table ───────────────────── */
   function renderFormationsTable(s) {
+    const closed = isCollapsed('formations');
     if (!s.formations.length) {
-      return `<div class="dojo-section">
-        <div class="dojo-sec-hdr">Formation Signals</div>
-        <p class="text-dim" style="font-size:.85rem">No formation signals on current candles</p>
+      return `<div class="dojo-section" data-panel="formations">
+        <div class="dojo-sec-hdr"><span>Formation Signals</span>${panelToggle('formations','formation signals')}</div>
+        <div class="${closed?'panel-hidden':''}"><p class="text-dim" style="font-size:.85rem">No formation signals on current candles</p></div>
       </div>`;
     }
     const tfChip = (tf) => {
@@ -746,8 +932,9 @@ const DojoTab = (() => {
       return `<span class="dojo-tf-chip">${tf} <span class="dojo-tf-diamond" style="color:${col}">◆</span></span>`;
     };
     const tierBadge = (t) => `<span class="dojo-tier dojo-tier-${t.toLowerCase()}">${t}</span>`;
-    return `<div class="dojo-section">
-      <div class="dojo-sec-hdr">Formation Signals</div>
+    return `<div class="dojo-section" data-panel="formations">
+      <div class="dojo-sec-hdr"><span>Formation Signals</span>${panelToggle('formations','formation signals')}</div>
+      <div class="${closed?'panel-hidden':''}">
       <table class="dojo-sig-table">
         <thead>
           <tr>
@@ -774,11 +961,13 @@ const DojoTab = (() => {
           }).join('')}
         </tbody>
       </table>
+      </div>
     </div>`;
   }
 
   /* ── Times to Trade — split into 2 cards ─────────────── */
   function renderTimesAndSweeps(s) {
+    const closed = isCollapsed('times');
     const bw = s.bestWorst;
     const ictMap = {
       good:    ['✅ Good time — killzone active', 'var(--green)'],
@@ -794,7 +983,10 @@ const DojoTab = (() => {
       ? s.liqSweeps.map(sw=>`<div class="dojo-sig-row" style="color:${sw.color}">⚡ ${sw.label}</div>`).join('')
       : '<p class="text-dim" style="font-size:.8rem">No active sweep detected</p>';
 
-    return `<div class="dojo-sig-grid">
+    return `<div class="dojo-section" data-panel="times">
+      <div class="dojo-sec-hdr"><span>Timing &amp; Sweeps</span>${panelToggle('times','timing cards')}</div>
+      <div class="${closed?'panel-hidden':''}">
+      <div class="dojo-sig-grid">
       <div class="dojo-card">
         <div class="dojo-card-lbl">ICT Killzone Status</div>
         <div class="dojo-card-val" style="color:${ictColor}">${ictLabel}</div>
@@ -811,18 +1003,8 @@ const DojoTab = (() => {
         <div class="dojo-card-lbl">Liquidity Sweeps</div>
         ${sweepHtml}
       </div>
-    </div>`;
-  }
-
-  /* ── Killzone countdowns ────────────────────────────── */
-  function renderKZCountdowns() {
-    const kz = kzStatus();
-    return `<div class="dojo-kz-row">
-      ${kz.map(k=>`<div class="dojo-kz-card${k.active?' kz-card-on':''}">
-        <div class="dojo-kz-name" style="color:${k.color}">${k.name}</div>
-        <div class="dojo-kz-val">${k.active ? '🟢 ACTIVE' : fmtCD(k.minsTo)}</div>
-        <div class="dojo-card-sub">${k.active ? 'In session now' : 'until open'}</div>
-      </div>`).join('')}
+      </div>
+      </div>
     </div>`;
   }
 
@@ -867,6 +1049,9 @@ const DojoTab = (() => {
       renderPD(_signals) +
       renderFormationsTable(_signals) +
       renderTimesAndSweeps(_signals);
+
+    // 🦖 Dinosaur alert side-effects (sound + browser notification)
+    maybeFireDino(_signals.confluence, _signals);
   }
 
   function startTick() {
@@ -875,8 +1060,6 @@ const DojoTab = (() => {
       const cl = document.getElementById('dojoClocks');
       if (!cl) { clearInterval(_clockTimer); return; }
       cl.innerHTML = renderClocks();
-      const kzEl = document.getElementById('dojoKZ');
-      if (kzEl) kzEl.innerHTML = renderKZCountdowns();
     }, 1000);
   }
 
@@ -910,12 +1093,12 @@ const DojoTab = (() => {
         <div class="loading-state">Fetching live data from Binance…</div>
       </div>
 
-      <div class="dojo-section" style="margin-top:16px">
-        <div class="dojo-sec-hdr">Killzone Countdowns</div>
-        <div id="dojoKZ">${renderKZCountdowns()}</div>
-      </div>
-
     </div>`;
+
+    // Request browser notification permission on first render (one-time prompt)
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      try { Notification.requestPermission(); } catch {}
+    }
 
     startTick();
     loadData();
@@ -958,6 +1141,12 @@ const DojoTab = (() => {
         updateBody();
       }
     },
+    _togglePanel: id => {
+      _panels[id] = !_panels[id];
+      savePanels();
+      updateBody();
+    },
+    _testDino: () => { _dinoArmed = true; _lastDinoFire = 0; playDinoBeep(); },
   };
 
 })();

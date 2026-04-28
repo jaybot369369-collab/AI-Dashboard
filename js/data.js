@@ -20,6 +20,8 @@ const DB = (() => {
     coachLog: 'jb_coach_log',
     tabs:     'jb_tabs',
     settings: 'jb_settings',
+    rules:    'jb_rules',
+    checklist:'jb_checklist',
   };
 
   /* ── Core helpers ────────────────────────────────────── */
@@ -56,9 +58,20 @@ const DB = (() => {
     { id: 'reports',    label: 'Reports',          icon: '📑', builtin: true },
     { id: 'coach',      label: 'Perf Coach',       icon: '🧠', builtin: true },
     { id: 'dojo',       label: 'ICT Dojo',         icon: '🥋', builtin: true },
+    { id: 'rules',      label: 'Rules',            icon: '📜', builtin: true },
   ];
   function getTabs() {
-    return load(KEYS.tabs) || DEFAULT_TABS;
+    const stored = load(KEYS.tabs);
+    if (!stored) return DEFAULT_TABS;
+    // Merge in any new builtin tabs that didn't exist when user last saved
+    const existing = new Set(stored.map(t => t.id));
+    const newOnes  = DEFAULT_TABS.filter(t => !existing.has(t.id));
+    if (newOnes.length) {
+      const merged = [...stored, ...newOnes];
+      save(KEYS.tabs, merged);
+      return merged;
+    }
+    return stored;
   }
   function saveTabs(tabs) { save(KEYS.tabs, tabs); }
   function addTab(label, icon) {
@@ -730,6 +743,88 @@ const DB = (() => {
     return pb;
   }
 
+  /* ══════════════════════════════════════════════════════
+     RULES (scalp / swing / long-term + checklist + red flags)
+  ══════════════════════════════════════════════════════ */
+  const DEFAULT_RULES = {
+    scalp: [
+      { text: 'Only trade during NY Open or London Open killzones', enabled: true },
+      { text: 'Max 3 scalp trades per day', enabled: true },
+      { text: 'Stop loss: 0.5R or 0.3% of entry, whichever is tighter', enabled: true },
+      { text: 'Take partial at 1R for first scalp, 1.5R for second', enabled: true },
+      { text: 'Never hold a scalp through a major news event', enabled: true },
+      { text: 'If down 2 trades in a row, stop for the day', enabled: true },
+      { text: 'Use 5m/15m for entry, 1H for bias', enabled: true },
+      { text: 'Always wait for liquidity sweep before entry', enabled: true },
+    ],
+    swing: [
+      { text: 'Use 4H bias from ICT Dojo', enabled: true },
+      { text: 'Risk 1-2% per trade max', enabled: true },
+      { text: 'Stop loss: below/above last 4H swing low/high', enabled: true },
+      { text: 'Hold time: 1-5 days max', enabled: true },
+      { text: 'Take partials at 1R and 2R, trail rest', enabled: true },
+      { text: 'Never trade against weekly bias', enabled: true },
+      { text: 'Wait for HTF PD array confirmation', enabled: true },
+      { text: 'Move stop to break-even at 1R', enabled: true },
+    ],
+    longterm: [
+      { text: 'Use 1D and 1W TF for setup', enabled: true },
+      { text: 'Risk 0.5% per trade max', enabled: true },
+      { text: 'Hold time: 1-4 weeks', enabled: true },
+      { text: 'Stop loss: weekly swing point', enabled: true },
+      { text: 'Multiple targets: 2R, 4R, 6R', enabled: true },
+      { text: 'Only enter on monthly/weekly OB or FVG retest', enabled: true },
+      { text: 'Reduce size during high volatility regimes', enabled: true },
+      { text: 'Reassess thesis at each weekly close', enabled: true },
+    ],
+    redFlags: [
+      'PD Direction = UNSURE → not enough confluence to justify a position',
+      'Volatility = EXTREME → wait for normalisation, or risk getting wicked out',
+      'Daily Range Used > 90% AND no killzone active → range exhausted, no fuel left',
+      'Day-of-Week shows red AND structure contradicts → fighting two tides',
+      'No Formation Signals + Liquidity Sweeps empty → market is in no-man\'s land',
+      'About to enter inside Asian KZ without a clear sweep setup → low probability',
+    ],
+  };
+
+  const DEFAULT_CHECKLIST = [
+    { text: 'Open ICT Dojo. Confirm pair + analysis TF matches your trade horizon (1H/4H scalp, 1D/1W swing).', checked: false },
+    { text: 'Read the PD Direction badge. Are you trading WITH it, or against it (and why)?', checked: false },
+    { text: 'Check Premium/Discount. Long only in discount, short only in premium (with rare exceptions).', checked: false },
+    { text: 'Look at Day-of-Week + Weekly Open. Are they confirming or contradicting your bias?', checked: false },
+    { text: 'Scan Formation Signals table. Any A-tier signals matching your direction? If not, skip.', checked: false },
+    { text: 'Confirm a killzone is active OR will open within your hold time. Otherwise wait.', checked: false },
+    { text: 'Check Daily Range Used. >90%? Range is exhausted — fade or wait for new day.', checked: false },
+    { text: 'Final sanity: 🦖 dinosaur active? Your personal best hour active? Both = full size. Neither = half size.', checked: false },
+  ];
+
+  function getRules() {
+    const stored = load(KEYS.rules);
+    if (!stored) return JSON.parse(JSON.stringify(DEFAULT_RULES));
+    // merge in any new default sections that may have been added since last save
+    return { ...DEFAULT_RULES, ...stored };
+  }
+  function saveRules(rules) { save(KEYS.rules, rules); }
+  function resetRules()     { localStorage.removeItem(KEYS.rules); }
+
+  function getChecklist() {
+    const stored = load(KEYS.checklist);
+    if (!stored || !stored.date || stored.date !== new Date().toISOString().slice(0,10)) {
+      // Reset checklist daily
+      const fresh = { date: new Date().toISOString().slice(0,10), items: JSON.parse(JSON.stringify(DEFAULT_CHECKLIST)) };
+      save(KEYS.checklist, fresh);
+      return fresh;
+    }
+    // Ensure all default items exist (in case defaults were updated)
+    DEFAULT_CHECKLIST.forEach((d, i) => {
+      if (!stored.items[i] || stored.items[i].text !== d.text) stored.items[i] = { ...d };
+    });
+    return stored;
+  }
+  function saveChecklist(items) {
+    save(KEYS.checklist, { date: new Date().toISOString().slice(0,10), items });
+  }
+
   /* Screenshot array helper — handles new array field + legacy comma-string safely.
      Never splits mid-base64 (only splits on comma followed by http: or data:). */
   function getScreenshots(t) {
@@ -1148,6 +1243,9 @@ const DB = (() => {
     parseNotionCSV, parseBinanceTxCSV, parseBinanceOrderCSV,
     // Utils
     uid, parseMoney, normalisePair,
-    getScreenshots
+    getScreenshots,
+    // Rules
+    getRules, saveRules, resetRules, DEFAULT_RULES,
+    getChecklist, saveChecklist, DEFAULT_CHECKLIST
   };
 })();

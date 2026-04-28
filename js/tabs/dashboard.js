@@ -156,6 +156,32 @@ const DashboardTab = (() => {
       }
     });
 
+    // Per-day trade tally (wins/losses/breakeven) for dot rendering
+    const tradesByDay = {};
+    allTrades.forEach(t => {
+      if (!t.date) return;
+      const ds = t.date;
+      if (!tradesByDay[ds]) tradesByDay[ds] = { wins: 0, losses: 0, be: 0, total: 0 };
+      tradesByDay[ds].total++;
+      const r = parseFloat(t.result);
+      if (isNaN(r))      tradesByDay[ds].be++;
+      else if (r > 0)    tradesByDay[ds].wins++;
+      else if (r < 0)    tradesByDay[ds].losses++;
+      else               tradesByDay[ds].be++;
+    });
+    const dotHtml = (t) => {
+      if (!t || !t.total) return '';
+      if (t.total <= 6) {
+        let dots = '';
+        for (let i = 0; i < t.wins;   i++) dots += '<span class="cal-dot win"></span>';
+        for (let i = 0; i < t.losses; i++) dots += '<span class="cal-dot loss"></span>';
+        for (let i = 0; i < t.be;     i++) dots += '<span class="cal-dot be"></span>';
+        return `<div class="cal-dots">${dots}</div>`;
+      }
+      // > 6 trades: show summary chip
+      return `<div class="cal-dots cal-dots-summary">${t.wins}<span class="cd-w">W</span>·${t.losses}<span class="cd-l">L</span></div>`;
+    };
+
     let html = '';
     for (let i = 0; i < startDay; i++) html += `<div class="cal-day empty"></div>`;
     for (let d = 1; d <= last.getDate(); d++) {
@@ -166,10 +192,13 @@ const DashboardTab = (() => {
       const md      = multiDayMap[dateStr];
       const mdCls   = md ? ` ${md.start ? 'multi-start' : ''} ${md.end ? 'multi-end' : ''}` : '';
       const pillCls = md ? (md.win && !md.loss ? 'win' : md.loss && !md.win ? 'loss' : '') : '';
+      const tDay    = tradesByDay[dateStr];
+      const tradeCount = tDay ? tDay.total : 0;
       html += `<div class="cal-day ${cls}${isToday}${mdCls}" data-date="${dateStr}"
-                    title="${dateStr}${pnl !== undefined ? ': ' + fmt$(pnl) : ''}${md ? ' · multi-day position' : ''}">
+                    title="${dateStr}${pnl !== undefined ? ': ' + fmt$(pnl) : ''}${tradeCount ? ` · ${tradeCount} trade${tradeCount>1?'s':''}` : ''}${md ? ' · multi-day position' : ''}">
         <span class="cal-num">${d}</span>
         ${pnl !== undefined ? `<span class="cal-pnl">${pnl >= 0 ? '+' : ''}${Math.abs(pnl) >= 1000 ? (pnl / 1000).toFixed(1) + 'k' : pnl.toFixed(0)}</span>` : ''}
+        ${dotHtml(tDay)}
         ${md ? `<div class="multi-day-pill ${pillCls}"></div>` : ''}
       </div>`;
     }
